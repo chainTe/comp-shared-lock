@@ -1,0 +1,16 @@
+[package]
+name = "comp-shared-lock"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ckb-std = "0.16.4"
+ckb-hash = { version = "0.116", default-features = false, features = ["ckb-contract"] }
+k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
+
+[profile.release]
+overflow-checks = true
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

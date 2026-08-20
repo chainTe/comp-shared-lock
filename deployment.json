@@ -1,0 +1,20 @@
+{
+  "network": "testnet",
+  "codeHash": "0x43fd8315fd9d20de67b2d26ea713b9fff034877d22fec2c5f51ad8a065ac12d9",
+  "hashType": "data2",
+  "contractOutPoint": {
+    "txHash": "0xcd56cc438ae1f6697de904cb8b12411beda44bb8a7f111ebc3520c9b90ebab95",
+    "index": "0x0"
+  },
+  "sharedCell": {
+    "outPoint": {
+      "txHash": "0xa4f5be018b19e081916a75b94a0273fa73be311feea69906c3ecde9693c77f57",
+      "index": "0x0"
+    },
+    "lockArgs": "0x3bf471b16283375362945f60972e6dd4a998db34b53623457dcaa800b6a4272640420f0000000000",
+    "channelHash": "0x3bf471b16283375362945f60972e6dd4a998db34b53623457dcaa800b6a42726",
+    "maxFeeShannon": "1000000"
+  },
+  "deployer": "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqdsk5ypy4mx245ygx26wsppq33qday8z3sm6yjzy",
+  "deployedAt": "2026-08-20T17:41:20.376Z"
+}

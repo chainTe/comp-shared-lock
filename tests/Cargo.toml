@@ -1,0 +1,18 @@
+[package]
+name = "tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ckb-testtool = "0.12"
+ckb-types = "0.116"
+ckb-hash = "0.116"
+k256 = { version = "0.13", features = ["ecdsa", "sha256"] }
+serde_json = "1.0"
+hex = "0.4"
+rand = "0.8"
+
+[[test]]
+name = "tests"
+path = "src/tests.rs"
