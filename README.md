@@ -1,6 +1,6 @@
 # COMP Shared Lock
 
-A CKB lock script implementing the **COMP Shared Lock v0.1** specification:
+A CKB lock script implementing the **COMP Shared Lock v0.3** specification:
 
 > Anyone may use the Cell, but nobody may take the Cell.
 
@@ -13,7 +13,7 @@ a gas pool.
 It also supports optional message authorship:
 
 - **Anonymous message**: no identity, no signature.
-- **Signed message**: `address + secp256k1 signature` verified on-chain against
+- **Signed message**: `compressed public key + secp256k1 signature` verified on-chain against
   `signing_digest = blake2b(tx_hash || message_hash)`.
 
 ## Lock Args
@@ -31,31 +31,31 @@ Args { hash: Byte32, max_fee: u64 (LE) }   // 40 bytes total
 5. input and successor must not carry a type script
 6. successor lock must be byte-identical to input lock (`hash` and `max_fee` immutable)
 7. `output_capacity + max_fee >= input_capacity` (overflow-safe; sponsoring allowed)
-8. cell data is unrestricted
-9. witness message (optional, JSON in `WitnessArgs.lock` of the group input):
-   - `(address, signature)` both absent/null → anonymous, valid
+8. the COMP input uses relative block `since = 1` (`0x8000000000000001`)
+9. cell data is unrestricted
+10. witness message (optional, JSON in `WitnessArgs.lock` of the group input):
+   - `(public_key, signature)` both absent/null → anonymous, valid
    - exactly one present → rejected
-   - both present → secp256k1 signature verified
+   - both present → recoverable secp256k1 signature verified against the public key
 
-## Canonical encoding (COMP v0.1)
+## Canonical encoding (COMP v0.2)
 
 ```
-message_bytes   = utf8(address) || [0u8; 65] || utf8(compact_json(extensions))
+message_bytes   = [0u8; 65] || utf8(compact_json(extensions))
 message_hash    = blake2b_256(message_bytes)
 signing_digest  = blake2b_256(tx_hash || message_hash)
 signature       = secp256k1 recoverable signature over signing_digest (r || s || v, v ∈ {0,1,2,3,27,28})
 ```
 
-Identity check: the address (short bech32, CCC compact full bech32m
-`0x00 || code_hash || hash_type || args`, or molecule full bech32m) is decoded to
-its lock args, which must equal `blake2b_256(compressed_pubkey)[..20]` of the key
-recovered from the signature.
+Identity check: `public_key` is the `0x`-prefixed 33-byte compressed SEC1
+secp256k1 public key. It must exactly equal the key recovered from the signature.
+No CKB address, network prefix, lock script, or lock args are involved.
 
 ## Repository layout
 
 ```
 contracts/comp-shared-lock/   Rust lock script (ckb-std, no_std)
-tests/                        ckb-testtool unit tests (19 cases)
+tests/                        ckb-testtool unit tests (28 cases)
 scripts/                      Node.js deploy / post-message / reclaim scripts (CCC)
 frontend/                     Vite + TypeScript web UI (CCC)
 deployment.json               testnet deployment info
@@ -65,10 +65,14 @@ deployment.json               testnet deployment info
 
 ```bash
 make build        # builds the RISC-V contract binary into build/release/
-make test         # builds + runs the 19 unit tests
+make test         # builds + runs the 28 unit tests
 ```
 
-## Testnet deployment (Pudge)
+## Legacy testnet deployment (Pudge, COMP v0.1)
+
+The deployment below uses the former CKB-address witness schema. COMP v0.2 has
+a new binary/code hash and must be redeployed before the updated scripts or UI
+can post signed messages.
 
 | Item | Value |
 | --- | --- |
@@ -85,17 +89,49 @@ Verified on-chain transitions:
 
 Explorer: `https://pudge.explorer.nervos.org/transaction/<tx_hash>`
 
+## COMP Type ID deployment and upgrade
+
+New deployments put the contract binary in a singleton Type ID code cell. The
+COMP Lock uses the Type ID script hash as `code_hash` with `hash_type: type`, so
+a future binary upgrade can replace the code cell while retaining the same
+COMP Lock identity. The code cell and shared Cell #0 are created atomically in
+one transaction; output 0 is the code cell and output 1 is the shared Cell.
+
+`deploy.mjs` validates the Type ID derivation (`input[0] + output_index`), keeps
+a 5,000 CKB code-cell upgrade reserve, and writes `deployment.json` only after
+both outputs are committed and read back as live Cells.
+
+`upgrade.mjs` spends and recreates that singleton code cell with the same Type
+ID script, preserving the COMP lock identity while updating the RISC-V binary.
+It supports an unsigned preparation step and verifies the committed replacement
+before updating `deployment.json`.
+
 ## Scripts
 
 ```bash
 cd scripts && npm install
 
-# deploy the contract and create shared cell #0
+# Build a transaction from the previous deployment address without exposing a key.
+# The result is written under .codex-artifacts/type-id-deployment/.
+node deploy.mjs
+
+# Sign and broadcast that exact prepared transaction.
+COMP_DEPLOY_KEY=0x<testnet-privkey> node deploy.mjs --send-prepared
+
+# Or build, sign, broadcast, verify, and record a fresh transaction in one run.
 COMP_DEPLOY_KEY=0x<testnet-privkey> node deploy.mjs
 
+# Prepare and then broadcast a Type ID in-place contract upgrade.
+node upgrade.mjs
+COMP_DEPLOY_KEY=0x<testnet-privkey> node upgrade.mjs --send-prepared
+
+# Prepare a Type ID rollback to the preserved pre-upgrade binary.
+../.codex-artifacts/since-upgrade/rollback.sh testnet
+
 # post an anonymous / signed message (on-chain e2e)
-COMP_DEPLOY_KEY=0x<testnet-privkey> node post-message.mjs anonymous
-COMP_DEPLOY_KEY=0x<testnet-privkey> node post-message.mjs signed
+# no fee-payer key: the network fee is deducted from the shared Cell
+node post-message.mjs anonymous
+node post-message.mjs signed
 ```
 
 ## Frontend
@@ -104,15 +140,29 @@ COMP_DEPLOY_KEY=0x<testnet-privkey> node post-message.mjs signed
 cd frontend && npm install && npm run dev
 ```
 
-The UI shows the current shared cell and lets you post anonymous messages,
+The UI discovers all COMP channels and includes a Create Channel page that
+derives a deterministic channel hash from the name, previews the Cell's required
+capacity, and submits one or more initial channel Cells through a connected CKB wallet.
+Channel metadata is stored in Cell data so its name can be rediscovered on-chain.
+It also lets you post anonymous messages,
 post signed messages (identity key can be generated in-browser) and sponsor
-the cell with extra capacity. Testnet only — paste any funded testnet private
-key as the fee payer.
+the cell with extra capacity. Message fees are deducted directly from the shared
+Cell, so posting does not require a fee-payer key. Only sponsoring requires a
+funded testnet private key. The transaction-history panel reconstructs the latest
+50 Cell transitions from the indexer, including block/time, message and author,
+capacity before/after, capacity delta, transaction fee, status and explorer link.
+
+Channel discovery and confirmed message details are cached in browser storage.
+Rooms render the saved scan immediately, perform one live refresh when opened,
+and only poll tracked pending transactions. Idle rooms stop scanning until the
+user presses **Refresh** or reopens the room.
 
 ## Security notes
 
 - All capacity arithmetic uses checked operations (`checked_add`).
-- The script never interprets cell data; message parsing is a strict
-  minimal JSON scanner with string-aware bracket matching.
+- The script never interprets cell data; message parsing rejects duplicate
+  identity fields, invalid JSON types/nesting and trailing bytes.
+- Signed identities use address-independent compressed public keys, and message
+  hashing is incremental to avoid a second witness-sized allocation.
 - Witnesses do not affect `tx_hash`, so signatures can be produced after the
   transaction is assembled and still bind the whole transaction.

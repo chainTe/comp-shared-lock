@@ -1,16 +1,15 @@
 [package]
 name = "comp-shared-lock"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 
 [dependencies]
-ckb-std = "0.16.4"
-ckb-hash = { version = "0.116", default-features = false, features = ["ckb-contract"] }
+ckb-std = { version = "1.1", default-features = false, features = ["allocator", "calc-hash", "ckb-types"] }
+ckb-hash = { version = "1.1", default-features = false, features = ["ckb-contract"] }
 k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
+log = { version = "0.4", default-features = false, optional = true }
 
-[profile.release]
-overflow-checks = true
-opt-level = "s"
-lto = true
-codegen-units = 1
-panic = "abort"
+[features]
+default = []
+enable_log = ["ckb-std/log", "dep:log"]
+native-simulator = ["ckb-std/native-simulator"]

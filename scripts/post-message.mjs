@@ -2,12 +2,11 @@ import { ccc } from "@ckb-ccc/shell";
 import { readFileSync } from "fs";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 
-const PRIVATE_KEY = process.env.COMP_DEPLOY_KEY;
-if (!PRIVATE_KEY) process.exit(1);
-
 const deployment = JSON.parse(readFileSync(new URL("../deployment.json", import.meta.url)));
 const client = new ccc.ClientPublicTestnet();
-const signer = new ccc.SignerCkbPrivateKey(client, PRIVATE_KEY);
+const MESSAGE_FEE_RATE = 3600n;
+const MAX_MESSAGE_FEE = BigInt(deployment.sharedCell.maxFeeShannon);
+const RELATIVE_BLOCK_SINCE_ONE = 0x8000000000000001n;
 
 const compLock = ccc.Script.from({
   codeHash: deployment.codeHash,
@@ -34,14 +33,14 @@ async function waitCommitted(txHash) {
   }
 }
 
-function buildMessage({ address = null, signature = null, payload }) {
+function buildMessage({ publicKey = null, signature = null, payload }) {
   const extensions = JSON.stringify({
     protocol: "comp",
-    version: 1,
+    version: 2,
     type: "text",
     payload,
   });
-  return JSON.stringify({ address, signature, extensions: JSON.parse(extensions) });
+  return JSON.stringify({ public_key: publicKey, signature, extensions: JSON.parse(extensions) });
 }
 
 async function postMessage({ payload, signerKey = null }) {
@@ -59,27 +58,33 @@ async function postMessage({ payload, signerKey = null }) {
         depType: "code",
       },
     ],
-    inputs: [{ previousOutput: cell.outPoint }],
+    inputs: [{
+      previousOutput: cell.outPoint,
+      since: RELATIVE_BLOCK_SINCE_ONE,
+    }],
     outputs: [{ lock: compLock, capacity: cell.cellOutput.capacity }],
     outputsData: [cell.outputData],
   });
-  await tx.completeInputsByCapacity(signer);
-  await tx.completeFeeBy(signer, 3600);
-
   if (signerKey) {
-    // signed message: signature = secp256k1(blake2b(tx_hash || blake2b(addr || 0x00*65 || ext)))
+    // signed message: signature = secp256k1(blake2b(tx_hash || blake2b(0x00*65 || ext)))
     const msgPriv = ccc.bytesFrom(signerKey);
     const pubkey = secp256k1.getPublicKey(msgPriv, true);
-    const lockArgs = ccc.bytesFrom(ccc.hashCkb(pubkey)).slice(0, 20);
-    const sigScript = await ccc.Script.fromKnownScript(client, "Secp256k1Blake160", ccc.hexFrom(lockArgs));
-    const address = await ccc.Address.fromScript(sigScript, client);
-    const addressStr = address.toString();
+    const publicKey = ccc.hexFrom(pubkey);
 
     const extensionsJson = JSON.stringify({
-      protocol: "comp", version: 1, type: "text", payload,
+      protocol: "comp", version: 2, type: "text", payload,
     });
+    const zeroSignature = `0x${"00".repeat(65)}`;
+    tx.setWitnessArgsAt(0, ccc.WitnessArgs.from({
+      lock: ccc.bytesFrom(JSON.stringify({
+        public_key: `0x${"00".repeat(33)}`,
+        signature: zeroSignature,
+        extensions: JSON.parse(extensionsJson),
+      }), "utf8"),
+    }));
+    payMessageFeeFromSharedCell(tx, cell.cellOutput.capacity);
+
     const messageBytes = ccc.bytesConcat(
-      ccc.bytesFrom(addressStr, "utf8"),
       new Uint8Array(65),
       ccc.bytesFrom(extensionsJson, "utf8"),
     );
@@ -90,23 +95,34 @@ async function postMessage({ payload, signerKey = null }) {
     // noble returns [recid, r, s]; the contract expects [r, s, recid]
     const sigBytes = ccc.bytesConcat(recovered.slice(1), recovered.slice(0, 1));
     const witnessJson = JSON.stringify({
-      address: addressStr,
+      public_key: publicKey,
       signature: ccc.hexFrom(sigBytes),
       extensions: JSON.parse(extensionsJson),
     });
     const witness = ccc.WitnessArgs.from({ lock: ccc.bytesFrom(witnessJson, "utf8") });
     tx.setWitnessArgsAt(0, witness);
-    console.log("signed by:", addressStr);
+    console.log("signed by public key:", publicKey);
   } else {
     const witnessJson = buildMessage({ payload });
     const witness = ccc.WitnessArgs.from({ lock: ccc.bytesFrom(witnessJson, "utf8") });
     tx.setWitnessArgsAt(0, witness);
+    payMessageFeeFromSharedCell(tx, cell.cellOutput.capacity);
   }
 
-  const txHash = await signer.sendTransaction(tx);
+  const txHash = await client.sendTransaction(tx);
   console.log("tx sent:", txHash);
   await waitCommitted(txHash);
   console.log("committed");
+}
+
+function payMessageFeeFromSharedCell(tx, inputCapacity) {
+  const fee = tx.estimateFee(MESSAGE_FEE_RATE);
+  if (fee > MAX_MESSAGE_FEE) {
+    throw new Error(`message fee ${fee} exceeds shared Cell max_fee ${MAX_MESSAGE_FEE}`);
+  }
+  if (fee >= inputCapacity) throw new Error("shared Cell capacity too low");
+  tx.outputs[0].capacity = inputCapacity - fee;
+  console.log("shared cell fee:", fee.toString(), "shannon");
 }
 
 const mode = process.argv[2] || "anonymous";

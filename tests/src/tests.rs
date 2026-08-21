@@ -7,6 +7,23 @@ use ckb_types::prelude::*;
 use k256::ecdsa::{SigningKey, VerifyingKey};
 
 const MAX_CYCLES: u64 = 100_000_000;
+const RELATIVE_BLOCK_SINCE_ONE: u64 = (1u64 << 63) | 1;
+const ERROR_INVALID_SINCE: i8 = 16;
+
+fn assert_rejected_with_code(
+    context: &Context,
+    tx: &ckb_types::core::TransactionView,
+    exit_code: i8,
+) {
+    let error = context
+        .verify_tx(tx, MAX_CYCLES)
+        .expect_err("transaction must fail");
+    let rendered = error.to_string();
+    assert!(
+        rendered.contains(&format!("ValidationFailure: see error code {exit_code}")),
+        "expected exit code {exit_code}, got: {rendered}"
+    );
+}
 
 fn deploy_contract(context: &mut Context) -> (OutPoint, Byte32) {
     let contract_bin: Bytes = std::fs::read("../build/release/comp-shared-lock")
@@ -28,7 +45,6 @@ struct Fixture {
     contract_out_point: OutPoint,
     lock_script: Script,
     input_out_point: OutPoint,
-    input_capacity: u64,
 }
 
 fn setup(tag: u8, max_fee: u64, input_capacity: u64) -> Fixture {
@@ -49,7 +65,6 @@ fn setup(tag: u8, max_fee: u64, input_capacity: u64) -> Fixture {
         contract_out_point,
         lock_script,
         input_out_point,
-        input_capacity,
     }
 }
 
@@ -58,6 +73,7 @@ fn base_tx(fx: &Fixture, outputs: Vec<CellOutput>, outputs_data: Vec<Bytes>) -> 
         .out_point(fx.contract_out_point.clone())
         .build();
     let input = CellInput::new_builder()
+        .since(RELATIVE_BLOCK_SINCE_ONE.pack())
         .previous_output(fx.input_out_point.clone())
         .build();
     TransactionBuilder::default()
@@ -83,7 +99,7 @@ fn test_anonymous_no_witness() {
         vec![Bytes::new()],
     )
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     let cycles = context.verify_tx(&tx, MAX_CYCLES).expect("pass");
     println!("cycles: {}", cycles);
 }
@@ -94,7 +110,7 @@ fn test_anonymous_with_extensions_message() {
     let witness = WitnessArgs::new_builder()
         .lock(
             Some(Bytes::from(
-                r#"{"extensions":{"protocol":"comp","version":1,"type":"text","payload":"hello"}}"#
+                r#"{"extensions":{"protocol":"comp","version":2,"type":"text","payload":"hello"}}"#
                     .as_bytes()
                     .to_vec(),
             ))
@@ -108,7 +124,7 @@ fn test_anonymous_with_extensions_message() {
     )
     .witness(witness.as_bytes().pack())
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     context.verify_tx(&tx, MAX_CYCLES).expect("pass");
 }
 
@@ -122,7 +138,7 @@ fn test_capacity_drop_within_max_fee() {
         vec![Bytes::new()],
     )
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     context.verify_tx(&tx, MAX_CYCLES).expect("pass");
 }
 
@@ -135,7 +151,7 @@ fn test_capacity_drop_beyond_max_fee() {
         vec![Bytes::new()],
     )
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
@@ -148,7 +164,7 @@ fn test_sponsoring_capacity_increase() {
         vec![Bytes::new()],
     )
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     context.verify_tx(&tx, MAX_CYCLES).expect("pass");
 }
 
@@ -174,11 +190,13 @@ fn test_two_comp_lock_groups_rejected() {
         .cell_dep(contract_dep)
         .input(
             CellInput::new_builder()
+                .since(RELATIVE_BLOCK_SINCE_ONE.pack())
                 .previous_output(fx.input_out_point.clone())
                 .build(),
         )
         .input(
             CellInput::new_builder()
+                .since(RELATIVE_BLOCK_SINCE_ONE.pack())
                 .previous_output(input_b_out_point)
                 .build(),
         )
@@ -186,9 +204,9 @@ fn test_two_comp_lock_groups_rejected() {
             successor_output(&fx.lock_script, 100_0000_0000u64),
             successor_output(&lock_b, 50_0000_0000u64),
         ])
-        .outputs_data(vec![Bytes::new(), Bytes::new()].pack())
+        .outputs_data([Bytes::new(), Bytes::new()].pack())
         .build();
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
@@ -209,18 +227,20 @@ fn test_merge_inputs_rejected() {
         .cell_dep(contract_dep)
         .input(
             CellInput::new_builder()
+                .since(RELATIVE_BLOCK_SINCE_ONE.pack())
                 .previous_output(fx.input_out_point.clone())
                 .build(),
         )
         .input(
             CellInput::new_builder()
+                .since(RELATIVE_BLOCK_SINCE_ONE.pack())
                 .previous_output(input2_out_point)
                 .build(),
         )
         .outputs(vec![successor_output(&fx.lock_script, 150_0000_0000u64)])
-        .outputs_data(vec![Bytes::new()].pack())
+        .outputs_data([Bytes::new()].pack())
         .build();
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
@@ -236,7 +256,7 @@ fn test_fork_outputs_rejected() {
         vec![Bytes::new(), Bytes::new()],
     )
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
@@ -253,7 +273,7 @@ fn test_no_successor_rejected() {
         vec![Bytes::new()],
     )
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
@@ -270,7 +290,7 @@ fn test_type_script_rejected() {
         .type_(Some(type_script).pack())
         .build();
     let tx = base_tx(&fx, vec![output], vec![Bytes::new()]).build();
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
@@ -287,7 +307,7 @@ fn test_lock_args_mutation_rejected() {
         vec![Bytes::new()],
     )
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
@@ -311,114 +331,98 @@ fn test_bad_args_length_rejected() {
         .cell_dep(contract_dep)
         .input(
             CellInput::new_builder()
+                .since(RELATIVE_BLOCK_SINCE_ONE.pack())
                 .previous_output(input_out_point)
                 .build(),
         )
         .outputs(vec![successor_output(&lock_script, 100_0000_0000u64)])
-        .outputs_data(vec![Bytes::new()].pack())
+        .outputs_data([Bytes::new()].pack())
         .build();
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
+#[test]
+fn test_since_zero_rejected() {
+    let fx = setup(14, 1_0000_0000u64, 100_0000_0000u64);
+    let contract_dep = CellDep::new_builder()
+        .out_point(fx.contract_out_point.clone())
+        .build();
+    let tx = TransactionBuilder::default()
+        .cell_dep(contract_dep)
+        .input(
+            CellInput::new_builder()
+                .previous_output(fx.input_out_point.clone())
+                .build(),
+        )
+        .output(successor_output(&fx.lock_script, 100_0000_0000u64))
+        .output_data(Bytes::new().pack())
+        .build();
+    let context = fx.context;
+    assert_rejected_with_code(&context, &tx, ERROR_INVALID_SINCE);
+}
+
+#[test]
+fn test_absolute_block_one_rejected() {
+    let fx = setup(15, 1_0000_0000u64, 100_0000_0000u64);
+    let contract_dep = CellDep::new_builder()
+        .out_point(fx.contract_out_point.clone())
+        .build();
+    let tx = TransactionBuilder::default()
+        .cell_dep(contract_dep)
+        .input(
+            CellInput::new_builder()
+                .since(1u64.pack())
+                .previous_output(fx.input_out_point.clone())
+                .build(),
+        )
+        .output(successor_output(&fx.lock_script, 100_0000_0000u64))
+        .output_data(Bytes::new().pack())
+        .build();
+    let context = fx.context;
+    assert_rejected_with_code(&context, &tx, ERROR_INVALID_SINCE);
+}
+
+#[test]
+fn test_relative_block_two_rejected() {
+    let fx = setup(16, 1_0000_0000u64, 100_0000_0000u64);
+    let contract_dep = CellDep::new_builder()
+        .out_point(fx.contract_out_point.clone())
+        .build();
+    let tx = TransactionBuilder::default()
+        .cell_dep(contract_dep)
+        .input(
+            CellInput::new_builder()
+                .since(((1u64 << 63) | 2).pack())
+                .previous_output(fx.input_out_point.clone())
+                .build(),
+        )
+        .output(successor_output(&fx.lock_script, 100_0000_0000u64))
+        .output_data(Bytes::new().pack())
+        .build();
+    let context = fx.context;
+    assert_rejected_with_code(&context, &tx, ERROR_INVALID_SINCE);
+}
+
 // ---- signed message tests ----
 
-fn blake160(data: &[u8]) -> [u8; 20] {
-    let h = blake2b_256(data);
-    let mut out = [0u8; 20];
-    out.copy_from_slice(&h[..20]);
-    out
+fn test_signing_key(tag: u8) -> SigningKey {
+    let mut bytes = [0u8; 32];
+    bytes[31] = tag;
+    SigningKey::from_bytes((&bytes).into()).expect("valid deterministic test key")
 }
 
-const BECH32M_CONST: u32 = 0x2bc830a3;
-const CHARSET: &[u8; 32] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-
-fn hrp_expand(hrp: &str) -> Vec<u8> {
-    let mut v: Vec<u8> = hrp.bytes().map(|c| c >> 5).collect();
-    v.push(0);
-    v.extend(hrp.bytes().map(|c| c & 31));
-    v
-}
-
-fn polymod(values: &[u8]) -> u32 {
-    let mut chk: u32 = 1;
-    const GEN: [u32; 5] = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
-    for &v in values {
-        let top = chk >> 25;
-        chk = (chk & 0x1ffffff) << 5 ^ (v as u32);
-        for i in 0..5 {
-            if (top >> i) & 1 == 1 {
-                chk ^= GEN[i];
-            }
-        }
-    }
-    chk
-}
-
-fn convert_bits_8_to_5(data: &[u8]) -> Vec<u8> {
-    let mut acc: u32 = 0;
-    let mut bits: u32 = 0;
-    let mut out = Vec::new();
-    for &value in data {
-        acc = (acc << 8) | value as u32;
-        bits += 8;
-        while bits >= 5 {
-            bits -= 5;
-            out.push(((acc >> bits) & 31) as u8);
-        }
-    }
-    if bits > 0 {
-        out.push(((acc << (5 - bits)) & 31) as u8);
-    }
-    out
-}
-
-fn bech32m_encode(hrp: &str, payload: &[u8]) -> String {
-    let data5 = convert_bits_8_to_5(payload);
-    let mut values = hrp_expand(hrp);
-    values.extend(&data5);
-    values.extend([0u8; 6]);
-    let pm = polymod(&values) ^ BECH32M_CONST;
-    let mut out = String::new();
-    out.push_str(hrp);
-    out.push('1');
-    for &d in &data5 {
-        out.push(CHARSET[d as usize] as char);
-    }
-    for i in 0..6 {
-        out.push(CHARSET[((pm >> (5 * (5 - i))) & 31) as usize] as char);
-    }
-    out
-}
-
-fn test_address_for_key(signing_key: &SigningKey) -> String {
+fn public_key_hex(signing_key: &SigningKey) -> String {
     let verifying_key: &VerifyingKey = signing_key.verifying_key();
-    let compressed = verifying_key.to_encoded_point(true);
-    let args = blake160(compressed.as_bytes());
-    // CCC-style compact full address payload: 0x00 || code_hash(32) || hash_type(1) || args(20)
-    let mut payload = vec![0x00u8];
-    payload.extend_from_slice(&[0x9bu8; 32]);
-    payload.push(0x00);
-    payload.extend_from_slice(&args);
-    bech32m_encode("ckt", &payload)
+    format!(
+        "0x{}",
+        hex::encode(verifying_key.to_encoded_point(true).as_bytes())
+    )
 }
 
-fn molecule_address_for_key(signing_key: &SigningKey) -> String {
-    let verifying_key: &VerifyingKey = signing_key.verifying_key();
-    let compressed = verifying_key.to_encoded_point(true);
-    let args = blake160(compressed.as_bytes());
-    let script = Script::new_builder()
-        .code_hash([0x9bu8; 32].pack())
-        .hash_type(ckb_types::core::ScriptHashType::Data1.into())
-        .args(Bytes::from(args.to_vec()).pack())
-        .build();
-    bech32m_encode("ckt", script.as_slice())
-}
-
-fn sign_message(signing_key: &SigningKey, address: &str, tx_hash: &[u8; 32]) -> Bytes {
+fn sign_message(signing_key: &SigningKey, public_key: &str, tx_hash: &[u8; 32]) -> Bytes {
     let extensions =
-        r#"{"protocol":"comp","version":1,"type":"text","payload":"hello signed world"}"#;
+        r#"{"protocol":"comp","version":2,"type":"text","payload":"hello signed world"}"#;
     let mut message_bytes = Vec::new();
-    message_bytes.extend_from_slice(address.as_bytes());
     message_bytes.extend_from_slice(&[0u8; 65]);
     message_bytes.extend_from_slice(extensions.as_bytes());
     let message_hash = blake2b_256(&message_bytes);
@@ -430,8 +434,8 @@ fn sign_message(signing_key: &SigningKey, address: &str, tx_hash: &[u8; 32]) -> 
     let mut sig_bytes = sig.to_bytes().to_vec();
     sig_bytes.push(recid.to_byte());
     let witness_json = format!(
-        r#"{{"address":"{}","signature":"0x{}","extensions":{}}}"#,
-        address,
+        r#"{{"public_key":"{}","signature":"0x{}","extensions":{}}}"#,
+        public_key,
         hex::encode(&sig_bytes),
         extensions
     );
@@ -439,10 +443,10 @@ fn sign_message(signing_key: &SigningKey, address: &str, tx_hash: &[u8; 32]) -> 
 }
 
 #[test]
-fn test_signed_message_success() {
+fn test_signed_message_public_key_success() {
     let fx = setup(20, 1_0000_0000u64, 100_0000_0000u64);
-    let signing_key = SigningKey::random(&mut rand::rngs::OsRng);
-    let address = test_address_for_key(&signing_key);
+    let signing_key = test_signing_key(1);
+    let public_key = public_key_hex(&signing_key);
 
     let tx_without_witness = base_tx(
         &fx,
@@ -452,7 +456,7 @@ fn test_signed_message_success() {
     .build();
     let tx_hash: [u8; 32] = tx_without_witness.hash().unpack();
 
-    let message = sign_message(&signing_key, &address, &tx_hash);
+    let message = sign_message(&signing_key, &public_key, &tx_hash);
     let witness = WitnessArgs::new_builder()
         .lock(Some(message).pack())
         .build();
@@ -461,17 +465,17 @@ fn test_signed_message_success() {
         .witness(witness.as_bytes().pack())
         .build();
 
-    let mut context = fx.context;
+    let context = fx.context;
     let cycles = context.verify_tx(&tx, MAX_CYCLES).expect("pass");
     println!("signed message cycles: {}", cycles);
 }
 
 #[test]
-fn test_signed_message_wrong_signer_rejected() {
+fn test_signed_message_wrong_public_key_rejected() {
     let fx = setup(21, 1_0000_0000u64, 100_0000_0000u64);
-    let signing_key = SigningKey::random(&mut rand::rngs::OsRng);
-    let other_key = SigningKey::random(&mut rand::rngs::OsRng);
-    let address = test_address_for_key(&other_key);
+    let signing_key = test_signing_key(2);
+    let other_key = test_signing_key(3);
+    let claimed_public_key = public_key_hex(&other_key);
 
     let tx_without_witness = base_tx(
         &fx,
@@ -480,8 +484,7 @@ fn test_signed_message_wrong_signer_rejected() {
     )
     .build();
     let tx_hash: [u8; 32] = tx_without_witness.hash().unpack();
-    // signed by signing_key but claims other_key's address
-    let message = sign_message(&signing_key, &address, &tx_hash);
+    let message = sign_message(&signing_key, &claimed_public_key, &tx_hash);
     let witness = WitnessArgs::new_builder()
         .lock(Some(message).pack())
         .build();
@@ -490,15 +493,15 @@ fn test_signed_message_wrong_signer_rejected() {
         .witness(witness.as_bytes().pack())
         .build();
 
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
 #[test]
 fn test_signed_message_tampered_payload_rejected() {
     let fx = setup(22, 1_0000_0000u64, 100_0000_0000u64);
-    let signing_key = SigningKey::random(&mut rand::rngs::OsRng);
-    let address = test_address_for_key(&signing_key);
+    let signing_key = test_signing_key(4);
+    let public_key = public_key_hex(&signing_key);
 
     let tx_without_witness = base_tx(
         &fx,
@@ -508,10 +511,8 @@ fn test_signed_message_tampered_payload_rejected() {
     .build();
     let tx_hash: [u8; 32] = tx_without_witness.hash().unpack();
 
-    // sign one payload, then tamper with the extensions in the witness
-    let extensions = r#"{"protocol":"comp","version":1,"type":"text","payload":"original"}"#;
+    let extensions = r#"{"protocol":"comp","version":2,"type":"text","payload":"original"}"#;
     let mut message_bytes = Vec::new();
-    message_bytes.extend_from_slice(address.as_bytes());
     message_bytes.extend_from_slice(&[0u8; 65]);
     message_bytes.extend_from_slice(extensions.as_bytes());
     let message_hash = blake2b_256(&message_bytes);
@@ -523,8 +524,8 @@ fn test_signed_message_tampered_payload_rejected() {
     let mut sig_bytes = sig.to_bytes().to_vec();
     sig_bytes.push(recid.to_byte());
     let tampered = format!(
-        r#"{{"address":"{}","signature":"0x{}","extensions":{{"protocol":"comp","version":1,"type":"text","payload":"tampered"}}}}"#,
-        address,
+        r#"{{"public_key":"{}","signature":"0x{}","extensions":{{"protocol":"comp","version":2,"type":"text","payload":"tampered"}}}}"#,
+        public_key,
         hex::encode(&sig_bytes)
     );
     let witness = WitnessArgs::new_builder()
@@ -535,19 +536,25 @@ fn test_signed_message_tampered_payload_rejected() {
         .witness(witness.as_bytes().pack())
         .build();
 
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
 #[test]
-fn test_address_without_signature_rejected() {
+fn test_public_key_without_signature_rejected() {
     let fx = setup(23, 1_0000_0000u64, 100_0000_0000u64);
+    let public_key = public_key_hex(&test_signing_key(5));
     let witness = WitnessArgs::new_builder()
-        .lock(Some(Bytes::from(
-            r#"{"address":"ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqw55dvxd8p25k6q2xr99w42lqzgu8gc3yqmgdt78","extensions":{"protocol":"comp","version":1,"type":"text","payload":"hi"}}"#
-                .as_bytes()
-                .to_vec(),
-        )).pack())
+        .lock(
+            Some(Bytes::from(
+                format!(
+                    r#"{{"public_key":"{}","extensions":{{"protocol":"comp","version":2,"type":"text","payload":"hi"}}}}"#,
+                    public_key
+                )
+                .into_bytes(),
+            ))
+            .pack(),
+        )
         .build();
     let tx = base_tx(
         &fx,
@@ -556,21 +563,24 @@ fn test_address_without_signature_rejected() {
     )
     .witness(witness.as_bytes().pack())
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
 #[test]
-fn test_signature_without_address_rejected() {
+fn test_signature_without_public_key_rejected() {
     let fx = setup(24, 1_0000_0000u64, 100_0000_0000u64);
     let witness = WitnessArgs::new_builder()
-        .lock(Some(Bytes::from(
-            format!(
-                r#"{{"signature":"0x{}","extensions":{{"protocol":"comp","version":1,"type":"text","payload":"hi"}}}}"#,
-                hex::encode([1u8; 65])
-            )
-            .into_bytes(),
-        )).pack())
+        .lock(
+            Some(Bytes::from(
+                format!(
+                    r#"{{"signature":"0x{}","extensions":{{"protocol":"comp","version":2,"type":"text","payload":"hi"}}}}"#,
+                    hex::encode([1u8; 65])
+                )
+                .into_bytes(),
+            ))
+            .pack(),
+        )
         .build();
     let tx = base_tx(
         &fx,
@@ -579,16 +589,23 @@ fn test_signature_without_address_rejected() {
     )
     .witness(witness.as_bytes().pack())
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
 #[test]
-fn test_signed_message_molecule_address_success() {
-    let fx = setup(26, 1_0000_0000u64, 100_0000_0000u64);
-    let signing_key = SigningKey::random(&mut rand::rngs::OsRng);
-    let address = molecule_address_for_key(&signing_key);
-
+fn test_uncompressed_public_key_rejected() {
+    let fx = setup(25, 1_0000_0000u64, 100_0000_0000u64);
+    let signing_key = test_signing_key(6);
+    let public_key = format!(
+        "0x{}",
+        hex::encode(
+            signing_key
+                .verifying_key()
+                .to_encoded_point(false)
+                .as_bytes()
+        )
+    );
     let tx_without_witness = base_tx(
         &fx,
         vec![successor_output(&fx.lock_script, 100_0000_0000u64)],
@@ -596,7 +613,7 @@ fn test_signed_message_molecule_address_success() {
     )
     .build();
     let tx_hash: [u8; 32] = tx_without_witness.hash().unpack();
-    let message = sign_message(&signing_key, &address, &tx_hash);
+    let message = sign_message(&signing_key, &public_key, &tx_hash);
     let witness = WitnessArgs::new_builder()
         .lock(Some(message).pack())
         .build();
@@ -604,24 +621,26 @@ fn test_signed_message_molecule_address_success() {
         .as_advanced_builder()
         .witness(witness.as_bytes().pack())
         .build();
-    let mut context = fx.context;
-    context.verify_tx(&tx, MAX_CYCLES).expect("pass");
+    let context = fx.context;
+    assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
 }
 
 #[test]
 fn test_signature_invalid_bytes_rejected() {
-    let fx = setup(25, 1_0000_0000u64, 100_0000_0000u64);
-    let signing_key = SigningKey::random(&mut rand::rngs::OsRng);
-    let address = test_address_for_key(&signing_key);
+    let fx = setup(26, 1_0000_0000u64, 100_0000_0000u64);
+    let public_key = public_key_hex(&test_signing_key(7));
     let witness = WitnessArgs::new_builder()
-        .lock(Some(Bytes::from(
-            format!(
-                r#"{{"address":"{}","signature":"0x{}","extensions":{{"protocol":"comp","version":1,"type":"text","payload":"hi"}}}}"#,
-                address,
-                hex::encode([0u8; 65])
-            )
-            .into_bytes(),
-        )).pack())
+        .lock(
+            Some(Bytes::from(
+                format!(
+                    r#"{{"public_key":"{}","signature":"0x{}","extensions":{{"protocol":"comp","version":2,"type":"text","payload":"hi"}}}}"#,
+                    public_key,
+                    hex::encode([0u8; 65])
+                )
+                .into_bytes(),
+            ))
+            .pack(),
+        )
         .build();
     let tx = base_tx(
         &fx,
@@ -630,6 +649,80 @@ fn test_signature_invalid_bytes_rejected() {
     )
     .witness(witness.as_bytes().pack())
     .build();
-    let mut context = fx.context;
+    let context = fx.context;
     assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
+}
+
+#[test]
+fn test_legacy_address_field_rejected() {
+    assert_message_rejected(
+        30,
+        &format!(
+            r#"{{"address":"ckt1legacy","signature":"0x{}","extensions":{{"protocol":"comp","version":2,"type":"text","payload":"hi"}}}}"#,
+            hex::encode([1u8; 65])
+        ),
+    );
+}
+
+#[test]
+fn test_duplicate_public_key_field_rejected() {
+    let fx = setup(31, 1_0000_0000u64, 100_0000_0000u64);
+    let signing_key = test_signing_key(8);
+    let public_key = public_key_hex(&signing_key);
+    let tx_without_witness = base_tx(
+        &fx,
+        vec![successor_output(&fx.lock_script, 100_0000_0000u64)],
+        vec![Bytes::new()],
+    )
+    .build();
+    let tx_hash: [u8; 32] = tx_without_witness.hash().unpack();
+    let canonical = String::from_utf8(sign_message(&signing_key, &public_key, &tx_hash).to_vec())
+        .expect("message utf8");
+    let duplicate = format!(r#"{{"public_key":"{}",{}"#, public_key, &canonical[1..]);
+    let witness = WitnessArgs::new_builder()
+        .lock(Some(Bytes::from(duplicate.into_bytes())).pack())
+        .build();
+    let tx = tx_without_witness
+        .as_advanced_builder()
+        .witness(witness.as_bytes().pack())
+        .build();
+
+    let context = fx.context;
+    assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
+}
+
+fn assert_message_rejected(tag: u8, message: &str) {
+    let fx = setup(tag, 1_0000_0000u64, 100_0000_0000u64);
+    let witness = WitnessArgs::new_builder()
+        .lock(Some(Bytes::from(message.as_bytes().to_vec())).pack())
+        .build();
+    let tx = base_tx(
+        &fx,
+        vec![successor_output(&fx.lock_script, 100_0000_0000u64)],
+        vec![Bytes::new()],
+    )
+    .witness(witness.as_bytes().pack())
+    .build();
+    let context = fx.context;
+    assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
+}
+
+#[test]
+fn test_trailing_json_bytes_rejected() {
+    assert_message_rejected(32, "{}trailing");
+}
+
+#[test]
+fn test_wrong_identity_json_type_rejected() {
+    assert_message_rejected(33, r#"{"public_key":false}"#);
+}
+
+#[test]
+fn test_wrong_extensions_json_type_rejected() {
+    assert_message_rejected(34, r#"{"extensions":1}"#);
+}
+
+#[test]
+fn test_malformed_nested_extensions_rejected() {
+    assert_message_rejected(35, r#"{"extensions":{"items":[1,]}}"#);
 }

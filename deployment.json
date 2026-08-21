@@ -1,20 +1,62 @@
 {
   "network": "testnet",
-  "codeHash": "0x43fd8315fd9d20de67b2d26ea713b9fff034877d22fec2c5f51ad8a065ac12d9",
-  "hashType": "data2",
+  "rpcUrl": "https://testnet.ckb.dev/",
+  "codeHash": "0xbc475946ff0e50276ca152c423cc260b8817de1c42a3be2eafffc55765f873c1",
+  "hashType": "type",
+  "dataHash": "0x81dae172b482fcf4748d7a71afae9adee91d02df70e29c022902db60b600c4d8",
+  "binarySha256": "10cf5e6a338945b2b673aa268c153d909038625dacbcc3b94a43a3e7fb1a2ba8",
+  "binaryBytes": 131984,
+  "typeId": {
+    "args": "0xecf583fa79b907a7f055fee7cef4205e15863e21fd29f62d962357075fb5a2c0",
+    "script": {
+      "codeHash": "0x00000000000000000000000000000000000000000000000000545950455f4944",
+      "hashType": "type",
+      "args": "0xecf583fa79b907a7f055fee7cef4205e15863e21fd29f62d962357075fb5a2c0"
+    },
+    "typeHash": "0xbc475946ff0e50276ca152c423cc260b8817de1c42a3be2eafffc55765f873c1"
+  },
   "contractOutPoint": {
-    "txHash": "0xcd56cc438ae1f6697de904cb8b12411beda44bb8a7f111ebc3520c9b90ebab95",
+    "txHash": "0x54d0bc54693cdfcaf2447ce920b3fe117cb8c490a2917b8a1d6094789651db64",
     "index": "0x0"
   },
   "sharedCell": {
     "outPoint": {
-      "txHash": "0xa4f5be018b19e081916a75b94a0273fa73be311feea69906c3ecde9693c77f57",
-      "index": "0x0"
+      "txHash": "0xffb90852c3005da63779b6357ffb521cba3201e778410b523f6d28ee9ab4ecd1",
+      "index": "0x1"
     },
     "lockArgs": "0x3bf471b16283375362945f60972e6dd4a998db34b53623457dcaa800b6a4272640420f0000000000",
     "channelHash": "0x3bf471b16283375362945f60972e6dd4a998db34b53623457dcaa800b6a42726",
-    "maxFeeShannon": "1000000"
+    "maxFeeShannon": "1000000",
+    "capacityCkb": "200"
   },
-  "deployer": "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqdsk5ypy4mx245ygx26wsppq33qday8z3sm6yjzy",
-  "deployedAt": "2026-08-20T17:41:20.376Z"
+  "codeCellReserveCkb": "4815.99867576",
+  "feeRateShannonPerKb": "1000",
+  "deployer": "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqwgx292hnvmn68xf779vmzrshpmm6epn4c0cgwga",
+  "deployedAt": "2026-08-21T07:41:06.363Z",
+  "contractVersion": "0.3.0",
+  "codeCellReserveShannon": "481599867576",
+  "requiredSince": {
+    "metric": "relative-block-number",
+    "value": "1",
+    "encoded": "0x8000000000000001"
+  },
+  "upgradeHistory": [
+    {
+      "txHash": "0x54d0bc54693cdfcaf2447ce920b3fe117cb8c490a2917b8a1d6094789651db64",
+      "previousContractOutPoint": {
+        "txHash": "0xffb90852c3005da63779b6357ffb521cba3201e778410b523f6d28ee9ab4ecd1",
+        "index": "0x0"
+      },
+      "contractOutPoint": {
+        "txHash": "0x54d0bc54693cdfcaf2447ce920b3fe117cb8c490a2917b8a1d6094789651db64",
+        "index": "0x0"
+      },
+      "previousDataHash": "0x47cf5ed34d4450ae965dba2e61ea82ca547d3971d99d3c077071d6aea9f34ab0",
+      "dataHash": "0x81dae172b482fcf4748d7a71afae9adee91d02df70e29c022902db60b600c4d8",
+      "binarySha256": "10cf5e6a338945b2b673aa268c153d909038625dacbcc3b94a43a3e7fb1a2ba8",
+      "feeShannon": "132424",
+      "upgradedAt": "2026-08-21T08:55:20.163Z"
+    }
+  ],
+  "upgradedAt": "2026-08-21T08:55:20.163Z"
 }

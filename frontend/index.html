@@ -5,66 +5,131 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>COMP Shared Lock</title>
     <style>
-      body { font-family: monospace; max-width: 860px; margin: 2rem auto; padding: 0 1rem; background: #111; color: #ddd; }
-      h1 { color: #7f6; }
-      .card { border: 1px solid #333; border-radius: 8px; padding: 1rem; margin: 1rem 0; background: #1a1a1a; }
-      label { display: block; margin: 0.5rem 0 0.2rem; color: #999; font-size: 0.85rem; }
-      input, textarea { width: 100%; box-sizing: border-box; background: #000; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 0.5rem; font-family: monospace; }
-      button { background: #7f6; color: #000; border: 0; border-radius: 4px; padding: 0.6rem 1.2rem; margin-top: 0.8rem; cursor: pointer; font-weight: bold; }
+      * { box-sizing: border-box; }
+      body {
+        font-family: monospace;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 1rem;
+        background: #111;
+        color: #ddd;
+        line-height: 1.5;
+      }
+      h1, h2, h3 { color: #7f6; margin: 0 0 0.5rem; }
+      a { color: #6cf; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      button {
+        background: #7f6;
+        color: #000;
+        border: 0;
+        border-radius: 4px;
+        padding: 0.6rem 1.2rem;
+        cursor: pointer;
+        font-weight: bold;
+        font-family: monospace;
+      }
       button:disabled { background: #555; cursor: not-allowed; }
+      button.secondary { background: #444; color: #ddd; }
+      input, textarea, select {
+        width: 100%;
+        background: #000;
+        color: #ddd;
+        border: 1px solid #444;
+        border-radius: 4px;
+        padding: 0.5rem;
+        font-family: monospace;
+      }
+      label { display: block; margin: 0.75rem 0 0.25rem; color: #999; font-size: 0.85rem; }
+      .card {
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+        background: #1a1a1a;
+      }
       .row { display: flex; gap: 1rem; flex-wrap: wrap; }
-      .col { flex: 1; min-width: 300px; }
-      pre { background: #000; padding: 0.8rem; border-radius: 4px; overflow-x: auto; font-size: 0.8rem; }
-      .ok { color: #7f6; } .err { color: #f66; }
-      a { color: #6cf; }
+      .col { flex: 1; min-width: 280px; }
+      .nav {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #333;
+      }
+      .nav a { font-weight: bold; }
+      .muted { color: #888; }
+      .ok { color: #7f6; }
+      .err { color: #f66; }
+      .pending { color: #fc8; }
+      .message-heading { align-items: center; }
+      .message-heading h3 { margin: 0; }
+      .message-heading .col { min-width: 0; }
+      .message-heading button { flex: 0 0 auto; }
+      .scan-status { margin: 0.5rem 0 1rem; font-size: 0.85rem; }
+      .scan-error {
+        border-left: 2px solid #f66;
+        margin: 0.75rem 0;
+        padding-left: 0.75rem;
+      }
+      .message-item {
+        border-top: 1px solid #333;
+        padding: 0.9rem 0;
+      }
+      .message-item .col { min-width: 0; }
+      .message-item > .row:first-child { align-items: center; }
+      .message-item > .row:first-child span {
+        flex: 0 0 auto;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        padding: 0.12rem 0.5rem;
+      }
+      .message-payload { line-height: 1.65; position: relative; }
+      .message-payload.is-collapsed {
+        max-height: 13rem;
+        overflow: hidden;
+        -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+        mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+      }
+      .message-expand {
+        font-size: 0.75rem;
+        margin-top: 0.65rem;
+        padding: 0.35rem 0.65rem;
+      }
+      .message-meta { font-size: 0.78rem; margin-top: 0.75rem; }
+      .message-meta .col { flex: 0 1 auto; }
+      .message-item:last-child { padding-bottom: 0; }
+      pre {
+        background: #000;
+        padding: 0.8rem;
+        border-radius: 4px;
+        overflow-x: auto;
+        font-size: 0.85rem;
+        margin: 0.5rem 0;
+      }
+      #toast {
+        position: fixed;
+        bottom: 1rem;
+        right: 1rem;
+        max-width: 420px;
+        z-index: 100;
+      }
+      .toast-item {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-left: 4px solid #7f6;
+        border-radius: 4px;
+        padding: 0.75rem 1rem;
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+      }
+      .toast-item.err { border-left-color: #f66; }
     </style>
   </head>
   <body>
-    <h1>COMP Shared Lock (CKB Testnet)</h1>
-    <p>Anyone may use the Cell, but nobody may take the Cell.</p>
-
-    <div class="card">
-      <label>Fee payer private key (testnet only, pays tx fee)</label>
-      <input id="feeKey" type="password" placeholder="0x..." />
-      <div id="feeAddr"></div>
-    </div>
-
-    <div class="card">
-      <h3>Shared Cell</h3>
-      <button id="refresh">Refresh</button>
-      <pre id="cellInfo">loading...</pre>
-    </div>
-
-    <div class="row">
-      <div class="card col">
-        <h3>Post Anonymous Message</h3>
-        <label>payload</label>
-        <textarea id="anonPayload" rows="3">hello comp</textarea>
-        <button id="postAnon">Post (anonymous)</button>
-      </div>
-
-      <div class="card col">
-        <h3>Post Signed Message</h3>
-        <label>author private key (identity, can be any key)</label>
-        <input id="authorKey" type="password" placeholder="0x... (leave empty to generate)" />
-        <label>payload</label>
-        <textarea id="signedPayload" rows="3">hello comp, signed</textarea>
-        <button id="postSigned">Post (signed)</button>
-      </div>
-
-      <div class="card col">
-        <h3>Sponsor</h3>
-        <label>amount (CKB) to add to the shared cell</label>
-        <input id="sponsorAmount" type="number" value="100" min="1" />
-        <button id="sponsor">Sponsor</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Log</h3>
-      <pre id="log"></pre>
-    </div>
-
+    <div id="app">loading…</div>
+    <div id="toast"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
