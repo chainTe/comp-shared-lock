@@ -16,6 +16,13 @@ interface PendingRecord {
   submittedAt: number;
 }
 
+export interface ResolvedMessageTransaction {
+  channelHash: string;
+  channelName: string;
+  transactionStatus: string;
+  message: Message;
+}
+
 const pendingRecords = new Map<string, PendingRecord>();
 
 async function cellToCompCell(cell: ccc.Cell): Promise<CompCell | undefined> {
@@ -76,6 +83,90 @@ export async function discoverChannels(): Promise<Channel[]> {
 export async function findChannel(channelHash: string): Promise<Channel | undefined> {
   const channels = await discoverChannels();
   return channels.find((c) => c.hash.toLowerCase() === channelHash.toLowerCase());
+}
+
+function scriptsEqual(left: ccc.Script, right: ccc.Script): boolean {
+  return left.codeHash.toLowerCase() === right.codeHash.toLowerCase()
+    && left.hashType === right.hashType
+    && left.args.toLowerCase() === right.args.toLowerCase();
+}
+
+export async function resolveMessageTransaction(
+  channelHash: string,
+  txHash: string,
+): Promise<ResolvedMessageTransaction> {
+  const [cfg, response] = await Promise.all([
+    loadDeployment(),
+    client.getTransaction(txHash),
+  ]);
+  if (!response) throw new Error(`transaction ${txHash} not found`);
+
+  const tx = response.transaction;
+  let inputIndex = -1;
+  let inputCell: ccc.Cell | undefined;
+  for (let index = 0; index < tx.inputs.length; index++) {
+    const cell = await client.getCell(tx.inputs[index].previousOutput);
+    if (!cell) continue;
+    const lock = cell.cellOutput.lock;
+    if (
+      lock.codeHash.toLowerCase() !== cfg.codeHash.toLowerCase()
+      || lock.hashType !== cfg.hashType
+    ) continue;
+    try {
+      if (parseCompArgs(lock.args).channelHash.toLowerCase() === channelHash.toLowerCase()) {
+        inputIndex = index;
+        inputCell = cell;
+        break;
+      }
+    } catch {
+      // Not a COMP lock input.
+    }
+  }
+
+  if (inputIndex < 0 || !inputCell) {
+    throw new Error("transaction does not consume a COMP Cell from this channel");
+  }
+
+  const compMessage = parseCompMessage(tx, inputIndex);
+  if (!compMessage) throw new Error("transaction does not contain a valid COMP text message");
+
+  const outputIndex = tx.outputs.findIndex((output) =>
+    scriptsEqual(output.lock, inputCell!.cellOutput.lock)
+  );
+  const inputCapacity = inputCell.cellOutput.capacity;
+  const outputCapacity = outputIndex < 0 ? undefined : tx.outputs[outputIndex].capacity;
+  const blockNumber = response.blockNumber;
+  let timestamp: bigint | undefined;
+  if (blockNumber !== undefined) {
+    try {
+      timestamp = (await client.getHeaderByNumber(blockNumber))?.timestamp;
+    } catch {
+      // Block metadata is optional; the transaction itself is already decoded.
+    }
+  }
+
+  const message: Message = {
+    txHash,
+    status: response.status === "committed" ? "confirmed" : "pending",
+    blockNumber,
+    timestamp,
+    author: compMessage.public_key ?? compMessage.address ?? "Anonymous",
+    payload: String(compMessage.extensions.payload),
+    inputCapacity,
+    outputCapacity,
+    capacityDelta: outputCapacity === undefined ? undefined : outputCapacity - inputCapacity,
+  };
+  if (message.status === "confirmed") saveCachedMessages(channelHash, [message]);
+
+  const outputData = outputIndex < 0 ? undefined : tx.outputsData[outputIndex];
+  const channelData: string[] = [inputCell.outputData];
+  if (outputData !== undefined) channelData.push(outputData);
+  return {
+    channelHash,
+    channelName: channelName(channelHash, channelData),
+    transactionStatus: response.status,
+    message,
+  };
 }
 
 function estimateMessageFee(): bigint {

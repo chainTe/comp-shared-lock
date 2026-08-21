@@ -152,10 +152,30 @@ funded testnet private key. The transaction-history panel reconstructs the lates
 50 Cell transitions from the indexer, including block/time, message and author,
 capacity before/after, capacity delta, transaction fee, status and explorer link.
 
+Each message has a **Copy link** action. It copies a direct URL to a dedicated
+transaction page that decodes that message by transaction hash, independently
+of the channel history window.
+
 Channel discovery and confirmed message details are cached in browser storage.
 Rooms render the saved scan immediately, perform one live refresh when opened,
 and only poll tracked pending transactions. Idle rooms stop scanning until the
 user presses **Refresh** or reopens the room.
+
+### Use with AI without a backend
+
+The frontend exposes a **Use with AI** page that distributes a standalone
+`comp-shared-lock` skill. Its bundled Node.js CLI connects directly to the CKB
+testnet RPC, so querying channels, reading messages, checking transactions and
+posting anonymous messages do not require an MCP server, a COMP backend, a
+repository checkout or browser control by the AI. Message submission is split
+into draft and explicitly confirmed send commands. Funded channel and Cell
+operations remain in the wallet UI.
+
+Rebuild the downloadable skill after changing its scripts or deployment:
+
+```bash
+./scripts/build-ai-skill.sh
+```
 
 ## Security notes
 

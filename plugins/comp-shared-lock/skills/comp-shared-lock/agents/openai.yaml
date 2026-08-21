@@ -1,0 +1,4 @@
+interface:
+  display_name: "COMP Shared Lock"
+  short_description: "让 AI 直接查询 CKB 并发送 COMP 消息"
+  default_prompt: "Use $comp-shared-lock to inspect COMP channels or draft a message."

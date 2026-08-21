@@ -2,17 +2,43 @@ import { channelListView } from "./views/channelList";
 import { chatRoomView } from "./views/chatRoom";
 import { addCellView } from "./views/addCell";
 import { createChannelView } from "./views/createChannel";
+import { messageDetailView } from "./views/messageDetail";
+import { aiSkillView } from "./views/aiSkill";
 
 export interface Route {
   name: string;
   params: Record<string, string>;
 }
 
-const routes: { pattern: RegExp; name: string; render: (params: Record<string, string>) => void }[] = [
+interface RouteDefinition {
+  pattern: RegExp;
+  name: string;
+  keys?: string[];
+  render: (params: Record<string, string>) => void;
+}
+
+const routes: RouteDefinition[] = [
   { pattern: /^\/$/, name: "channelList", render: () => channelListView() },
+  { pattern: /^\/ai$/, name: "aiSkill", render: () => aiSkillView() },
   { pattern: /^\/channels\/new$/, name: "createChannel", render: () => createChannelView() },
-  { pattern: /^\/channel\/([^/]+)$/, name: "chatRoom", render: (p) => chatRoomView(p.hash) },
-  { pattern: /^\/channel\/([^/]+)\/add-cell$/, name: "addCell", render: (p) => addCellView(p.hash) },
+  {
+    pattern: /^\/channel\/([^/]+)\/message\/([^/]+)$/,
+    name: "sharedMessage",
+    keys: ["hash", "txHash"],
+    render: (p) => messageDetailView(p.hash, p.txHash),
+  },
+  {
+    pattern: /^\/channel\/([^/]+)\/add-cell$/,
+    name: "addCell",
+    keys: ["hash"],
+    render: (p) => addCellView(p.hash),
+  },
+  {
+    pattern: /^\/channel\/([^/]+)$/,
+    name: "chatRoom",
+    keys: ["hash"],
+    render: (p) => chatRoomView(p.hash),
+  },
 ];
 
 let currentCleanup: (() => void) | undefined;
@@ -22,9 +48,9 @@ function matchRoute(path: string): { route: typeof routes[number]; params: Recor
     const m = path.match(route.pattern);
     if (m) {
       const params: Record<string, string> = {};
-      const keys = ["hash"];
       m.slice(1).forEach((value, i) => {
-        if (keys[i]) params[keys[i]] = decodeURIComponent(value);
+        const key = route.keys?.[i];
+        if (key) params[key] = decodeURIComponent(value);
       });
       return { route, params };
     }

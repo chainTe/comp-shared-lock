@@ -30,6 +30,15 @@
       }
       button:disabled { background: #555; cursor: not-allowed; }
       button.secondary { background: #444; color: #ddd; }
+      .download-button {
+        display: inline-block;
+        background: #7f6;
+        color: #000;
+        border-radius: 4px;
+        padding: 0.6rem 1.2rem;
+        font-weight: bold;
+      }
+      .download-button:hover { text-decoration: none; filter: brightness(1.08); }
       input, textarea, select {
         width: 100%;
         background: #000;
@@ -99,6 +108,21 @@
       }
       .message-meta { font-size: 0.78rem; margin-top: 0.75rem; }
       .message-meta .col { flex: 0 1 auto; }
+      .message-share {
+        flex: 0 0 auto;
+        font-size: 0.75rem;
+        margin-left: auto;
+        padding: 0.28rem 0.6rem;
+      }
+      .message-detail-summary, .message-detail-capacity { margin: 1rem 0; }
+      .message-detail-summary .col, .message-detail-capacity .col { min-width: 150px; }
+      .message-detail-payload {
+        background: #000;
+        border-radius: 4px;
+        overflow-wrap: anywhere;
+        padding: 1rem;
+        white-space: pre-wrap;
+      }
       .message-item:last-child { padding-bottom: 0; }
       pre {
         background: #000;

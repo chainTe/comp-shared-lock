@@ -1,0 +1,27 @@
+{
+  "name": "comp-shared-lock",
+  "version": "0.1.0",
+  "description": "Let AI query CKB and post COMP messages without a backend or browser control.",
+  "author": {
+    "name": "gpBlockchain",
+    "url": "https://github.com/gpBlockchain"
+  },
+  "homepage": "https://gpblockchain.github.io/comp-shared-lock/",
+  "repository": "https://github.com/gpBlockchain/comp-shared-lock",
+  "keywords": ["ckb", "comp", "messaging", "agent"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "COMP Shared Lock",
+    "shortDescription": "Let AI use COMP on CKB",
+    "longDescription": "Query COMP channels and transactions or draft and send anonymous messages directly from an AI agent, using a bundled local CLI and public CKB RPC.",
+    "developerName": "gpBlockchain",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://gpblockchain.github.io/comp-shared-lock/",
+    "defaultPrompt": [
+      "List the live COMP channels on CKB testnet.",
+      "Summarize the latest messages in a COMP channel.",
+      "Draft an anonymous COMP message and ask me before sending."
+    ]
+  }
+}

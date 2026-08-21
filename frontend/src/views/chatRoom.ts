@@ -11,6 +11,7 @@ import {
 import { postAnonymous, postSigned } from "../txBuilder";
 import { formatCapacity, formatCapacityDelta, truncateHash } from "../utils";
 import { EXPLORER_TX_URL, PENDING_POLL_INTERVAL_MS } from "../rpc";
+import { copyMessageLink } from "../messageShare";
 import type { ChannelState, Message, SigningIdentity } from "../types";
 import { el, formatTime, navBar, spinner, toast } from "./common";
 
@@ -120,6 +121,31 @@ export function chatRoomView(channelHash: string): () => void {
     const txCol = el("span", { className: "col" }, "tx: ");
     txCol.appendChild(txLink);
     bottom.appendChild(txCol);
+    const shareBtn = el(
+      "button",
+      {
+        className: "secondary message-share",
+        type: "button",
+        title: "Copy a direct link to this message",
+        "aria-label": `Copy link to message ${msg.txHash}`,
+      },
+      "⧉ Copy link",
+    ) as HTMLButtonElement;
+    shareBtn.addEventListener("click", async () => {
+      shareBtn.disabled = true;
+      try {
+        await copyMessageLink(channelHash, msg.txHash);
+        toast("Message link copied.", "ok");
+      } catch (error) {
+        toast(
+          `Could not copy message link: ${error instanceof Error ? error.message : String(error)}`,
+          "err",
+        );
+      } finally {
+        shareBtn.disabled = false;
+      }
+    });
+    bottom.appendChild(shareBtn);
     item.appendChild(bottom);
 
     return item;

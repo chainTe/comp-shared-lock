@@ -42,6 +42,7 @@ export function navBar(): HTMLElement {
   const spacer = el("span", {});
   spacer.style.flex = "1";
   bar.appendChild(spacer);
+  bar.appendChild(el("a", { href: "#/ai" }, "Use with AI"));
   bar.appendChild(el("a", { href: "#/channels/new" }, "Create Channel"));
   return bar;
 }

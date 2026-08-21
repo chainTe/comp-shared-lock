@@ -4,3 +4,5 @@ node_modules/
 dist/
 deployment.local.json
 *.log
+.codex-artifacts/
+.idea/
