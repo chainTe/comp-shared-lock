@@ -18,9 +18,10 @@ import {
   getWalletSigner,
 } from "../identity";
 import { EXPLORER_TX_URL } from "../rpc";
+import type { ChannelKind } from "../types";
 import { el, navBar, toast } from "./common";
 
-export function createChannelView(): () => void {
+export function createChannelView(initialKind: ChannelKind = "wall"): () => void {
   const app = document.getElementById("app")!;
   app.innerHTML = "";
   app.appendChild(navBar());
@@ -29,23 +30,27 @@ export function createChannelView(): () => void {
   let signer = getWalletSigner();
 
   const intro = el("div", { className: "card" });
-  intro.appendChild(el("h2", {}, "Create Channel"));
-  intro.appendChild(
-    el(
-      "p",
-      { className: "muted" },
-      "Create one or more COMP Cells for a new channel. Their capacity becomes the shared pool that pays message fees.",
-    ),
-  );
+  const introTitle = el("h2", {});
+  const introCopy = el("p", { className: "muted" });
+  intro.appendChild(introTitle);
+  intro.appendChild(introCopy);
   app.appendChild(intro);
 
   const form = el("div", { className: "card" });
-  form.appendChild(el("label", { for: "channel-name" }, "Channel name"));
+  form.appendChild(el("label", { for: "channel-kind" }, "Space format"));
+  const kindSelect = el("select", { id: "channel-kind" }) as HTMLSelectElement;
+  kindSelect.appendChild(el("option", { value: "wall" }, "Canvas wall — draw together") as HTMLOptionElement);
+  kindSelect.appendChild(el("option", { value: "chat" }, "Text room — talk together") as HTMLOptionElement);
+  kindSelect.value = initialKind;
+  form.appendChild(kindSelect);
+
+  const nameLabel = el("label", { for: "channel-name" });
+  form.appendChild(nameLabel);
   const nameInput = el("input", {
     id: "channel-name",
     type: "text",
     maxlength: "64",
-    placeholder: "Gas Pool",
+    placeholder: "CKB Summit 2026",
     autocomplete: "off",
   }) as HTMLInputElement;
   form.appendChild(nameInput);
@@ -62,7 +67,8 @@ export function createChannelView(): () => void {
 
   const valueRow = el("div", { className: "row" });
   const capacityCol = el("div", { className: "col" });
-  capacityCol.appendChild(el("label", { for: "channel-capacity" }, "Capacity per Cell (CKB)"));
+  const capacityLabel = el("label", { for: "channel-capacity" });
+  capacityCol.appendChild(capacityLabel);
   const capacityInput = el("input", {
     id: "channel-capacity",
     type: "number",
@@ -77,11 +83,12 @@ export function createChannelView(): () => void {
   capacityCol.appendChild(capacityHint);
 
   const countCol = el("div", { className: "col" });
-  countCol.appendChild(el("label", { for: "channel-cell-count" }, "Initial Cell count"));
+  const countLabel = el("label", { for: "channel-cell-count" });
+  countCol.appendChild(countLabel);
   const cellCountInput = el("input", {
     id: "channel-cell-count",
     type: "number",
-    value: "1",
+    value: "4",
     min: "1",
     max: String(MAX_INITIAL_CELL_COUNT),
     step: "1",
@@ -94,7 +101,7 @@ export function createChannelView(): () => void {
   countCol.appendChild(countHint);
 
   const feeCol = el("div", { className: "col" });
-  feeCol.appendChild(el("label", { for: "channel-max-fee" }, "Maximum fee per message (CKB)"));
+  feeCol.appendChild(el("label", { for: "channel-max-fee" }, "Maximum fee per post (CKB)"));
   const maxFeeInput = el("input", {
     id: "channel-max-fee",
     type: "number",
@@ -114,18 +121,36 @@ export function createChannelView(): () => void {
 
   const actions = el("div", { className: "row" });
   const connectBtn = el("button", { className: "col secondary" }, "Connect Wallet") as HTMLButtonElement;
-  const submitBtn = el("button", { className: "col" }, "Create Channel Cell") as HTMLButtonElement;
+  const submitBtn = el("button", { className: "col" }) as HTMLButtonElement;
   actions.appendChild(connectBtn);
   actions.appendChild(submitBtn);
   form.appendChild(actions);
   app.appendChild(form);
 
-  function preview(): { name: string; hash: string; cellCount: number } | undefined {
+  function selectedKind(): ChannelKind {
+    return kindSelect.value === "chat" ? "chat" : "wall";
+  }
+
+  function renderKindCopy(): void {
+    const isChat = selectedKind() === "chat";
+    introTitle.textContent = isChat ? "Create a Text Room" : "Create a Wall";
+    introCopy.textContent = isChat
+      ? "Start a public text room with a shared Message Supply. Multiple COMP Cells become parallel message lanes so anyone can talk without holding CKB."
+      : "Name a public canvas and add its first Paint Supply. Multiple COMP Cells become parallel paint lanes so everyone can post without holding CKB.";
+    nameLabel.textContent = isChat ? "Room name" : "Wall name";
+    nameInput.placeholder = isChat ? "General" : "CKB Summit 2026";
+    capacityLabel.textContent = isChat ? "Messages per lane (CKB)" : "Paint per lane (CKB)";
+    countLabel.textContent = isChat ? "Parallel message lanes" : "Parallel paint lanes";
+  }
+
+  function preview(): { name: string; hash: string; cellCount: number; kind: ChannelKind } | undefined {
+    renderKindCopy();
+    const kind = selectedKind();
     let definition: { name: string; hash: string };
     try {
-      const metadata = channelMetadata(nameInput.value);
+      const metadata = channelMetadata(nameInput.value, kind);
       const hash = channelHashFromName(metadata.name);
-      const outputData = encodeChannelMetadata(metadata.name);
+      const outputData = encodeChannelMetadata(metadata.name, kind);
       const minimum = minimumCompCellCapacity(outputData);
       slugPreview.textContent = `comp-channel-${metadata.slug}`;
       hashPreview.textContent = hash;
@@ -147,12 +172,16 @@ export function createChannelView(): () => void {
       const cellCount = normalizeCellCount(cellCountInput.value);
       const capacity = ccc.fixedPointFrom(capacityInput.value);
       const totalCapacity = capacity * BigInt(cellCount);
-      countHint.textContent = `Creates ${cellCount} ${cellCount === 1 ? "Cell" : "Cells"}; total capacity ${ccc.fixedPointToString(totalCapacity)} CKB.`;
+      const maxFee = ccc.fixedPointFrom(maxFeeInput.value);
+      const estimatedPosts = maxFee > 0n ? totalCapacity / maxFee : 0n;
+      const laneKind = kind === "chat" ? "message" : "paint";
+      countHint.textContent = `Creates ${cellCount} ${laneKind} ${cellCount === 1 ? "lane" : "lanes"}; ${ccc.fixedPointToString(totalCapacity)} CKB total · up to ~${estimatedPosts.toLocaleString()} posts at the fee ceiling.`;
       countHint.className = "muted";
+      const noun = kind === "chat" ? "Text Room" : "Wall";
       submitBtn.textContent = cellCount === 1
-        ? "Create Channel Cell"
-        : `Create ${cellCount} Channel Cells`;
-      return { ...definition, cellCount };
+        ? `Create ${noun}`
+        : `Create ${noun} with ${cellCount} lanes`;
+      return { ...definition, cellCount, kind };
     } catch (e) {
       countHint.textContent = e instanceof Error ? e.message : String(e);
       countHint.className = "err";
@@ -171,8 +200,10 @@ export function createChannelView(): () => void {
   }
 
   nameInput.addEventListener("input", preview);
+  kindSelect.addEventListener("change", preview);
   capacityInput.addEventListener("input", preview);
   cellCountInput.addEventListener("input", preview);
+  maxFeeInput.addEventListener("input", preview);
 
   connectBtn.addEventListener("click", async () => {
     if (getWalletSigner()) {
@@ -206,6 +237,7 @@ export function createChannelView(): () => void {
         capacityInput.value,
         maxFeeInput.value,
         definition.cellCount,
+        definition.kind,
       );
       rememberChannelName(result.channelHash, definition.name);
       toast(`${result.cellCount} channel ${result.cellCount === 1 ? "Cell" : "Cells"} submitted: ${result.txHash.slice(0, 16)}…`, "ok");
@@ -215,10 +247,10 @@ export function createChannelView(): () => void {
         el(
           "h3",
           { className: "ok" },
-          `${result.cellCount} Channel ${result.cellCount === 1 ? "Cell" : "Cells"} submitted`,
+          `${definition.kind === "chat" ? "Text room" : "Wall"} submitted with ${result.cellCount} ${definition.kind === "chat" ? "message" : "paint"} ${result.cellCount === 1 ? "lane" : "lanes"}`,
         ),
       );
-      form.appendChild(el("p", {}, `${definition.name} will appear after testnet confirmation.`));
+      form.appendChild(el("p", {}, `${definition.name} will appear in Space Explorer after testnet confirmation.`));
       form.appendChild(el("label", {}, "Channel hash"));
       form.appendChild(el("pre", {}, result.channelHash));
       form.appendChild(
@@ -234,8 +266,8 @@ export function createChannelView(): () => void {
       successActions.appendChild(
         el(
           "a",
-          { href: `#/channel/${encodeURIComponent(result.channelHash)}` },
-          "Open channel after confirmation →",
+          { href: `${definition.kind === "chat" ? "#/channel" : "#/wall"}/${encodeURIComponent(result.channelHash)}` },
+          `Open ${definition.kind === "chat" ? "room" : "wall"} after confirmation →`,
         ),
       );
       form.appendChild(successActions);

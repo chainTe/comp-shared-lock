@@ -1,4 +1,5 @@
 import { ccc } from "@ckb-ccc/shell";
+import { channelKind } from "./channelNames";
 import type { Channel, CompCell, Message } from "./types";
 
 const STORAGE_KEY = "comp-shared-lock.scan-cache.v1";
@@ -26,6 +27,7 @@ interface StoredCell {
 interface StoredChannel {
   hash: string;
   name: string;
+  kind?: Channel["kind"];
   maxFee: string;
   cells: StoredCell[];
   totalCapacity: string;
@@ -34,7 +36,10 @@ interface StoredChannel {
 interface StoredMessage {
   txHash: string;
   blockNumber?: string;
+  blockHash?: string;
   timestamp?: string;
+  transactionIndex?: number;
+  compInputIndex?: number;
   author: string;
   payload: string;
   capacityDelta?: string;
@@ -140,6 +145,7 @@ function storeChannel(channel: Channel): StoredChannel {
   return {
     hash: channel.hash,
     name: channel.name,
+    kind: channel.kind,
     maxFee: channel.maxFee.toString(),
     cells: channel.cells.map(storeCell),
     totalCapacity: channel.totalCapacity.toString(),
@@ -147,11 +153,13 @@ function storeChannel(channel: Channel): StoredChannel {
 }
 
 function restoreChannel(stored: StoredChannel): Channel {
+  const cells = stored.cells.map(restoreCell);
   return {
     hash: stored.hash,
     name: stored.name,
+    kind: stored.kind ?? channelKind(stored.hash, cells.map((cell) => cell.outputData)),
     maxFee: BigInt(stored.maxFee),
-    cells: stored.cells.map(restoreCell),
+    cells,
     totalCapacity: BigInt(stored.totalCapacity),
   };
 }
@@ -160,7 +168,10 @@ function storeMessage(message: Message): StoredMessage {
   return {
     txHash: message.txHash,
     blockNumber: message.blockNumber?.toString(),
+    blockHash: message.blockHash,
     timestamp: message.timestamp?.toString(),
+    transactionIndex: message.transactionIndex,
+    compInputIndex: message.compInputIndex,
     author: message.author,
     payload: message.payload,
     capacityDelta: message.capacityDelta?.toString(),
@@ -174,7 +185,10 @@ function restoreMessage(stored: StoredMessage): Message {
     txHash: stored.txHash,
     status: "confirmed",
     blockNumber: stored.blockNumber === undefined ? undefined : BigInt(stored.blockNumber),
+    blockHash: stored.blockHash,
     timestamp: stored.timestamp === undefined ? undefined : BigInt(stored.timestamp),
+    transactionIndex: stored.transactionIndex,
+    compInputIndex: stored.compInputIndex,
     author: stored.author,
     payload: stored.payload,
     capacityDelta: stored.capacityDelta === undefined ? undefined : BigInt(stored.capacityDelta),

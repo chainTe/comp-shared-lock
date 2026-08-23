@@ -1,6 +1,7 @@
 import { loadDeployment } from "./config";
 import { initRouter } from "./router";
 import { toast } from "./views/common";
+import "./styles.css";
 
 async function bootstrap() {
   try {

@@ -123,6 +123,7 @@ export function findWalletSigner(
 
 export async function connectWallet(
   purpose: WalletPurpose = "message",
+  fallbackToBrowserKey = true,
 ): Promise<SigningIdentity | undefined> {
   try {
     const controller = new SignersController();
@@ -137,18 +138,29 @@ export async function connectWallet(
         toast("No CKB transaction signer found.", "err");
         return;
       }
-      toast("No wallets discovered. Falling back to browser key.", "err");
-      return await readyInBrowserIdentity();
+      if (fallbackToBrowserKey) {
+        toast("No wallets discovered. Falling back to browser key.", "err");
+        return await readyInBrowserIdentity();
+      }
+      toast("No compatible secp256k1 CKB wallet found.", "err");
+      return;
     }
 
     const signer = findWalletSigner(wallets, purpose);
     if (!signer) {
       if (purpose === "message") {
+        if (fallbackToBrowserKey) {
+          toast(
+            "No secp256k1 CKB wallet found. JoyID WebAuthn signatures do not match the COMP v0.2 message format; using the browser key.",
+            "err",
+          );
+          return await readyInBrowserIdentity();
+        }
         toast(
-          "No secp256k1 CKB wallet found. JoyID WebAuthn signatures do not match the COMP v0.2 message format; using the browser key.",
+          "No compatible secp256k1 CKB wallet found. The post identity remains Anonymous.",
           "err",
         );
-        return await readyInBrowserIdentity();
+        return;
       }
       toast("No CKB transaction signer found.", "err");
       return;
@@ -210,7 +222,10 @@ export async function connectWallet(
     return identity;
   } catch (e) {
     toast(`Wallet connection failed: ${e instanceof Error ? e.message : String(e)}`, "err");
-    return await readyInBrowserIdentity();
+    if (purpose === "message" && fallbackToBrowserKey) {
+      return await readyInBrowserIdentity();
+    }
+    return;
   }
 }
 

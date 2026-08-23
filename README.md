@@ -140,12 +140,36 @@ node post-message.mjs signed
 cd frontend && npm install && npm run dev
 ```
 
-The UI discovers all COMP channels and includes a Create Channel page that
+The default frontend is **COMP Spaces**, with both permissionless text rooms and
+public canvases built on the existing COMP Shared Cell message path. Canvas
+spaces implement the `comp-wall` v1
+batch Event protocol from [`docs/comp-wall-design.md`](docs/comp-wall-design.md):
+
+- fixed 1920×1080 layered Canvas with Pen, Eraser, Text, Shape and local Undo;
+- anonymous or browser-key signed Batch Posts, with Draft → Wet Paint → On-chain state;
+- Wall Explorer, Activity, Graffiti Detail, Paint Supply and wallet-funded Sponsor flows;
+- deterministic multi-Cell history ordering, Time Machine and 1×/4×/16×/64× replay;
+- IndexedDB event/draft/pending caches and PNG Snapshot checkpoints;
+- responsive desktop/mobile controls, keyboard shortcuts and pinch-to-zoom.
+
+Text rooms use `#/channel/<hash>`, while Canvas Wall routes use `#/wall/<hash>`.
+Legacy channels such as **General** are identified as text rooms; new on-chain
+channel metadata records whether a space is a `chat` or `wall`.
+
+Frontend verification:
+
+```bash
+cd frontend
+npm run check       # typecheck + comp-wall protocol tests + production build
+```
+
+The UI discovers COMP channels as mixed text and canvas spaces. It includes
+Create Text Room and Create Wall flows that
 derives a deterministic channel hash from the name, previews the Cell's required
 capacity, and submits one or more initial channel Cells through a connected CKB wallet.
 Channel metadata is stored in Cell data so its name can be rediscovered on-chain.
-It also lets you post anonymous messages,
-post signed messages (identity key can be generated in-browser) and sponsor
+The compatibility channel route also lets you post anonymous messages,
+post signed messages (identity key can be generated in-browser), while both routes can sponsor
 the cell with extra capacity. Message fees are deducted directly from the shared
 Cell, so posting does not require a fee-payer key. Only sponsoring requires a
 funded testnet private key. The transaction-history panel reconstructs the latest
@@ -161,20 +185,19 @@ Rooms render the saved scan immediately, perform one live refresh when opened,
 and only poll tracked pending transactions. Idle rooms stop scanning until the
 user presses **Refresh** or reopens the room.
 
-### Use with AI without a backend
+### Standalone agent skill
 
-The frontend exposes a **Use with AI** page that distributes a standalone
-`comp-shared-lock` skill. Its bundled Node.js CLI connects directly to the CKB
-testnet RPC, so querying channels, reading messages, checking transactions and
-posting anonymous messages do not require an MCP server, a COMP backend, a
-repository checkout or browser control by the AI. Message submission is split
-into draft and explicitly confirmed send commands. Funded channel and Cell
-operations remain in the wallet UI.
+The downloadable standalone `comp-shared-lock` skill includes a bundled Node.js
+CLI that connects directly to the CKB testnet RPC, so querying channels, reading
+messages, checking transactions and posting anonymous messages do not require
+an MCP server, a COMP backend, a repository checkout or browser control.
+Message submission is split into draft and explicitly confirmed send commands.
+Funded channel and Cell operations remain in the wallet UI.
 
 Rebuild the downloadable skill after changing its scripts or deployment:
 
 ```bash
-./scripts/build-ai-skill.sh
+./scripts/build-agent-skill.sh
 ```
 
 ## Security notes

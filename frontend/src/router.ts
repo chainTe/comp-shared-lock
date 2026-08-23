@@ -1,9 +1,9 @@
-import { channelListView } from "./views/channelList";
 import { chatRoomView } from "./views/chatRoom";
 import { addCellView } from "./views/addCell";
 import { createChannelView } from "./views/createChannel";
 import { messageDetailView } from "./views/messageDetail";
-import { aiSkillView } from "./views/aiSkill";
+import { wallExplorerView } from "./views/wallExplorer";
+import { wallView } from "./views/wall";
 
 export interface Route {
   name: string;
@@ -18,9 +18,15 @@ interface RouteDefinition {
 }
 
 const routes: RouteDefinition[] = [
-  { pattern: /^\/$/, name: "channelList", render: () => channelListView() },
-  { pattern: /^\/ai$/, name: "aiSkill", render: () => aiSkillView() },
-  { pattern: /^\/channels\/new$/, name: "createChannel", render: () => createChannelView() },
+  { pattern: /^\/$/, name: "wallExplorer", render: () => wallExplorerView() },
+  { pattern: /^\/walls\/new$/, name: "createWall", render: () => createChannelView("wall") },
+  { pattern: /^\/channels\/new$/, name: "createChannel", render: () => createChannelView("chat") },
+  {
+    pattern: /^\/wall\/([^/]+)$/,
+    name: "wall",
+    keys: ["hash"],
+    render: (p) => wallView(p.hash),
+  },
   {
     pattern: /^\/channel\/([^/]+)\/message\/([^/]+)$/,
     name: "sharedMessage",

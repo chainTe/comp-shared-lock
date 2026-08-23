@@ -1,6 +1,9 @@
 import { copyMessageLink } from "../messageShare";
+import { channelKind, channelRoute } from "../channelNames";
+import { parseGraffitiPayload } from "../compWall";
 import { resolveMessageTransaction } from "../resolver";
 import { EXPLORER_TX_URL } from "../rpc";
+import { readCachedChannels } from "../scanCache";
 import { formatCapacity, formatCapacityDelta } from "../utils";
 import { el, formatTime, navBar, spinner, toast } from "./common";
 
@@ -10,6 +13,9 @@ export function messageDetailView(channelHash: string, txHash: string): () => vo
   app.appendChild(navBar());
 
   let cancelled = false;
+  const cachedKind = readCachedChannels()?.value.find(
+    (channel) => channel.hash.toLowerCase() === channelHash.toLowerCase(),
+  )?.kind ?? channelKind(channelHash);
   const container = el("main", { className: "card message-detail" });
   container.appendChild(spinner("loading transaction…"));
   app.appendChild(container);
@@ -19,13 +25,15 @@ export function messageDetailView(channelHash: string, txHash: string): () => vo
       const detail = await resolveMessageTransaction(channelHash, txHash);
       if (cancelled) return;
       const { message } = detail;
+      const kind = cachedKind ?? (parseGraffitiPayload(message.payload) ? "wall" : "chat");
+      const backHref = channelRoute(channelHash, kind);
       container.innerHTML = "";
 
       const heading = el("div", { className: "row message-heading" });
       const title = el("div", { className: "col" });
       title.appendChild(el("h2", {}, "Message details"));
       title.appendChild(
-        el("a", { href: `#/channel/${encodeURIComponent(channelHash)}` }, `← ${detail.channelName}`),
+        el("a", { href: backHref }, `← ${detail.channelName}`),
       );
       heading.appendChild(title);
 
@@ -108,7 +116,7 @@ export function messageDetailView(channelHash: string, txHash: string): () => vo
         el("p", { className: "err" }, error instanceof Error ? error.message : String(error)),
       );
       container.appendChild(
-        el("a", { href: `#/channel/${encodeURIComponent(channelHash)}` }, "← Back to channel"),
+        el("a", { href: channelRoute(channelHash, cachedKind ?? "chat") }, "← Back to channel"),
       );
     }
   }
