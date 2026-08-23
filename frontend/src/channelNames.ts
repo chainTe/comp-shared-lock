@@ -1,4 +1,5 @@
 import { ccc } from "@ckb-ccc/shell";
+import type { ChannelKind } from "./types";
 
 const CHANNEL_PREFIX = "comp-channel-";
 const LOCAL_CHANNEL_NAMES_KEY = "comp-channel-names";
@@ -9,6 +10,8 @@ export interface ChannelMetadata {
   type: "channel";
   name: string;
   slug: string;
+  /** Added after v1 launch; absent metadata remains readable. */
+  kind?: ChannelKind;
 }
 
 export const KNOWN_CHANNELS: Record<string, string> = {
@@ -19,6 +22,15 @@ export const KNOWN_CHANNELS: Record<string, string> = {
   "0x0000000000000000000000000000000000000000000000000000000000000bbb": "CKB Security",
   "0x0000000000000000000000000000000000000000000000000000000000000ccc": "AI",
   "0x263b341b07e11e287668ba408ff67842bd370a179107d33d149e86ea76d59ec8": "Gas Pool",
+};
+
+/** Channels deployed before COMP Wall are text rooms. */
+export const KNOWN_CHANNEL_KINDS: Record<string, ChannelKind> = {
+  "0x3bf471b16283375362945f60972e6dd4a998db34b53623457dcaa800b6a42726": "chat",
+  "0x0000000000000000000000000000000000000000000000000000000000000aaa": "chat",
+  "0x0000000000000000000000000000000000000000000000000000000000000bbb": "chat",
+  "0x0000000000000000000000000000000000000000000000000000000000000ccc": "chat",
+  "0x263b341b07e11e287668ba408ff67842bd370a179107d33d149e86ea76d59ec8": "chat",
 };
 
 export function channelSlug(name: string): string {
@@ -43,7 +55,7 @@ export function channelHashFromName(name: string): string {
   return ccc.hexFrom(ccc.hashCkb(ccc.bytesFrom(preimage, "utf8")));
 }
 
-export function channelMetadata(name: string): ChannelMetadata {
+export function channelMetadata(name: string, kind: ChannelKind = "wall"): ChannelMetadata {
   const displayName = name.normalize("NFKC").trim();
   return {
     protocol: "comp",
@@ -51,11 +63,12 @@ export function channelMetadata(name: string): ChannelMetadata {
     type: "channel",
     name: displayName,
     slug: channelSlug(displayName),
+    kind,
   };
 }
 
-export function encodeChannelMetadata(name: string): string {
-  return ccc.hexFrom(ccc.bytesFrom(JSON.stringify(channelMetadata(name)), "utf8"));
+export function encodeChannelMetadata(name: string, kind: ChannelKind = "wall"): string {
+  return ccc.hexFrom(ccc.bytesFrom(JSON.stringify(channelMetadata(name, kind)), "utf8"));
 }
 
 export function parseChannelMetadata(outputData: string): ChannelMetadata | undefined {
@@ -70,6 +83,7 @@ export function parseChannelMetadata(outputData: string): ChannelMetadata | unde
       value.type !== "channel" ||
       typeof value.name !== "string" ||
       typeof value.slug !== "string" ||
+      (value.kind !== undefined && value.kind !== "chat" && value.kind !== "wall") ||
       channelSlug(value.name) !== value.slug
     ) {
       return;
@@ -78,6 +92,28 @@ export function parseChannelMetadata(outputData: string): ChannelMetadata | unde
   } catch {
     return;
   }
+}
+
+export function channelKind(hash: string, outputData: string[] = []): ChannelKind | undefined {
+  const normalizedHash = hash.toLowerCase();
+  const known = KNOWN_CHANNEL_KINDS[normalizedHash];
+  if (known) return known;
+
+  for (const data of outputData) {
+    const metadata = parseChannelMetadata(data);
+    if (
+      metadata?.kind
+      && channelHashFromName(metadata.name).toLowerCase() === normalizedHash
+    ) {
+      return metadata.kind;
+    }
+  }
+  return undefined;
+}
+
+export function channelRoute(hash: string, kind: ChannelKind): string {
+  const segment = kind === "chat" ? "channel" : "wall";
+  return `#/${segment}/${encodeURIComponent(hash)}`;
 }
 
 function localChannelNames(): Record<string, string> {

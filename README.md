@@ -140,8 +140,9 @@ node post-message.mjs signed
 cd frontend && npm install && npm run dev
 ```
 
-The default frontend is **COMP Wall**, a permissionless public canvas built on
-the existing COMP Shared Cell message path. It implements the `comp-wall` v1
+The default frontend is **COMP Spaces**, with both permissionless text rooms and
+public canvases built on the existing COMP Shared Cell message path. Canvas
+spaces implement the `comp-wall` v1
 batch Event protocol from [`docs/comp-wall-design.md`](docs/comp-wall-design.md):
 
 - fixed 1920×1080 layered Canvas with Pen, Eraser, Text, Shape and local Undo;
@@ -151,8 +152,9 @@ batch Event protocol from [`docs/comp-wall-design.md`](docs/comp-wall-design.md)
 - IndexedDB event/draft/pending caches and PNG Snapshot checkpoints;
 - responsive desktop/mobile controls, keyboard shortcuts and pinch-to-zoom.
 
-The former text-channel UI remains available at `#/channel/<hash>` for COMP
-protocol compatibility, while Wall routes use `#/wall/<hash>`.
+Text rooms use `#/channel/<hash>`, while Canvas Wall routes use `#/wall/<hash>`.
+Legacy channels such as **General** are identified as text rooms; new on-chain
+channel metadata records whether a space is a `chat` or `wall`.
 
 Frontend verification:
 
@@ -161,7 +163,8 @@ cd frontend
 npm run check       # typecheck + comp-wall protocol tests + production build
 ```
 
-The UI discovers all COMP channels as Walls and includes a Create Wall page that
+The UI discovers COMP channels as mixed text and canvas spaces. It includes
+Create Text Room and Create Wall flows that
 derives a deterministic channel hash from the name, previews the Cell's required
 capacity, and submits one or more initial channel Cells through a connected CKB wallet.
 Channel metadata is stored in Cell data so its name can be rediscovered on-chain.
@@ -182,35 +185,19 @@ Rooms render the saved scan immediately, perform one live refresh when opened,
 and only poll tracked pending transactions. Idle rooms stop scanning until the
 user presses **Refresh** or reopens the room.
 
-### AI Studio and standalone agent skill
+### Standalone agent skill
 
-The frontend exposes an **AI Studio** at `#/ai`. An agent or user can choose a
-target Wall, describe an artwork in Chinese or English, select a style and
-placement, then generate a deterministic preview made entirely from valid
-`comp-wall` v1 events. The Studio supports variations, per-event inspection,
-undo/clear, exact event JSON, and a **Stage on Wall** handoff. Staging only adds
-to the local Wall draft; the normal Wall composer remains the final review and
-Post surface.
-
-Its primary download is the cross-agent `$comp-wall-artist` Skill. The page
-copies one install command that places the same package in both
-`~/.agents/skills/comp-wall-artist` for local Codex and
-`~/.claude/skills/comp-wall-artist` for local Claude, plus a ready-to-paste
-prompt containing the selected Wall URL and creative brief. Every Wall header
-links back to this flow through **AI Draw**.
-
-The page also keeps the downloadable standalone `comp-shared-lock` skill. Its
-bundled Node.js CLI connects directly to the CKB testnet RPC, so querying
-channels, reading messages, checking transactions and posting anonymous
-messages do not require an MCP server, a COMP backend, a repository checkout or
-browser control by the AI. Message submission is split into draft and explicitly
-confirmed send commands. Funded channel and Cell operations remain in the
-wallet UI.
+The downloadable standalone `comp-shared-lock` skill includes a bundled Node.js
+CLI that connects directly to the CKB testnet RPC, so querying channels, reading
+messages, checking transactions and posting anonymous messages do not require
+an MCP server, a COMP backend, a repository checkout or browser control.
+Message submission is split into draft and explicitly confirmed send commands.
+Funded channel and Cell operations remain in the wallet UI.
 
 Rebuild the downloadable skill after changing its scripts or deployment:
 
 ```bash
-./scripts/build-ai-skill.sh
+./scripts/build-agent-skill.sh
 ```
 
 ## Security notes

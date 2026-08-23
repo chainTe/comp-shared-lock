@@ -1,7 +1,7 @@
 import { ccc } from "@ckb-ccc/shell";
 import { client, HISTORY_LIMIT, MESSAGE_FEE_RATE, MIN_CELL_CAPACITY, PENDING_POLL_INTERVAL_MS } from "./rpc";
 import { compLockTemplate, loadDeployment, parseCompArgs } from "./config";
-import { channelName } from "./channelNames";
+import { channelKind, channelName } from "./channelNames";
 import {
   readCachedMessages,
   saveCachedChannels,
@@ -91,6 +91,7 @@ export async function discoverChannels(): Promise<Channel[]> {
     channels.push({
       hash,
       name: channelName(hash, cells.map((cell) => cell.outputData)),
+      kind: channelKind(hash, cells.map((cell) => cell.outputData)),
       maxFee,
       cells,
       totalCapacity,

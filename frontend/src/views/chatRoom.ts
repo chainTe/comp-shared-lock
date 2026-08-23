@@ -55,7 +55,10 @@ export function chatRoomView(channelHash: string): () => void {
     const channel = state?.channel ?? cachedChannel;
     if (!channel) return;
     header.innerHTML = "";
-    header.appendChild(el("h2", {}, channel.name));
+    const titleRow = el("div", { className: "row message-heading" });
+    titleRow.appendChild(el("h2", { className: "col" }, `#${channel.name.replace(/^#/, "")}`));
+    titleRow.appendChild(el("span", { className: "room-kind-label" }, "TEXT ROOM"));
+    header.appendChild(titleRow);
     const meta = el("div", { className: "row" });
     meta.appendChild(el("span", { className: "col muted" }, `hash: ${truncateHash(channel.hash)}`));
     meta.appendChild(

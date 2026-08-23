@@ -2,7 +2,6 @@ import { chatRoomView } from "./views/chatRoom";
 import { addCellView } from "./views/addCell";
 import { createChannelView } from "./views/createChannel";
 import { messageDetailView } from "./views/messageDetail";
-import { aiSkillView } from "./views/aiSkill";
 import { wallExplorerView } from "./views/wallExplorer";
 import { wallView } from "./views/wall";
 
@@ -20,9 +19,8 @@ interface RouteDefinition {
 
 const routes: RouteDefinition[] = [
   { pattern: /^\/$/, name: "wallExplorer", render: () => wallExplorerView() },
-  { pattern: /^\/ai(?:\?.*)?$/, name: "aiSkill", render: () => aiSkillView() },
-  { pattern: /^\/walls\/new$/, name: "createWall", render: () => createChannelView() },
-  { pattern: /^\/channels\/new$/, name: "createChannel", render: () => createChannelView() },
+  { pattern: /^\/walls\/new$/, name: "createWall", render: () => createChannelView("wall") },
+  { pattern: /^\/channels\/new$/, name: "createChannel", render: () => createChannelView("chat") },
   {
     pattern: /^\/wall\/([^/]+)$/,
     name: "wall",

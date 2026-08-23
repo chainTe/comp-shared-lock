@@ -37,13 +37,13 @@ export function toast(message: string, cls = "") {
 
 export function navBar(): HTMLElement {
   const bar = el("div", { className: "nav" });
-  bar.appendChild(el("a", { href: "#/" }, "COMP WALL"));
+  bar.appendChild(el("a", { href: "#/" }, "COMP SPACES"));
   bar.appendChild(el("span", { className: "muted" }, "CKB Testnet"));
   const spacer = el("span", {});
   spacer.style.flex = "1";
   bar.appendChild(spacer);
-  bar.appendChild(el("a", { href: "#/ai" }, "AI Studio"));
-  bar.appendChild(el("a", { href: "#/walls/new" }, "Create Wall"));
+  bar.appendChild(el("a", { href: "#/channels/new" }, "New Text Room"));
+  bar.appendChild(el("a", { href: "#/walls/new" }, "New Wall"));
   return bar;
 }
 

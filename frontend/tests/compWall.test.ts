@@ -15,7 +15,14 @@ import {
   type GraffitiRecord,
 } from "../src/compWall.ts";
 import type { Message } from "../src/types.ts";
-import { generateAiArtwork } from "../src/aiWall.ts";
+import {
+  channelHashFromName,
+  channelKind,
+  channelMetadata,
+  channelRoute,
+  encodeChannelMetadata,
+  parseChannelMetadata,
+} from "../src/channelNames.ts";
 
 const fixtures: GraffitiEvent[] = [
   { type: "stroke", points: [[1, 2], [3, 4], [8, 9]], color: "#7861FF", width: 8 },
@@ -26,6 +33,23 @@ const fixtures: GraffitiEvent[] = [
   { type: "shape", shape: "line", x1: 1, y1: 2, x2: 100, y2: 200, color: "#2387FF", width: 4 },
   { type: "shape", shape: "arrow", x1: 10, y1: 20, x2: 180, y2: 220, color: "#F05A3C", width: 7 },
 ];
+
+const GENERAL_CHANNEL_HASH = "0x3bf471b16283375362945f60972e6dd4a998db34b53623457dcaa800b6a42726";
+
+test("legacy General resolves to the text-room route", () => {
+  assert.equal(channelKind(GENERAL_CHANNEL_HASH), "chat");
+  assert.equal(channelRoute(GENERAL_CHANNEL_HASH, "chat"), `#/channel/${GENERAL_CHANNEL_HASH}`);
+});
+
+test("channel metadata preserves chat/wall presentation without changing the deterministic hash", () => {
+  const chatData = encodeChannelMetadata("Community", "chat");
+  const wallData = encodeChannelMetadata("Community", "wall");
+  assert.deepEqual(parseChannelMetadata(chatData), channelMetadata("Community", "chat"));
+  assert.deepEqual(parseChannelMetadata(wallData), channelMetadata("Community", "wall"));
+  const hash = channelHashFromName("Community");
+  assert.equal(channelKind(hash, [chatData]), "chat");
+  assert.equal(channelKind(hash, [wallData]), "wall");
+});
 
 test("all MVP event types round-trip through the comp-wall v1 batch codec", () => {
   const payload = serializeGraffitiBatch(fixtures);
@@ -129,38 +153,4 @@ test("stroke simplification preserves endpoints and event bounds remain inside t
   assert.deepEqual(simplified, [[0, 0], [10, 0]]);
   const bounds = eventBounds({ type: "stroke", points: [[0, 0], [WALL_WIDTH, WALL_HEIGHT]], color: "#111111", width: 20 });
   assert.deepEqual(bounds, { minX: 0, minY: 0, maxX: WALL_WIDTH, maxY: WALL_HEIGHT });
-});
-
-test("AI artwork generation is deterministic and produces a valid wall batch", () => {
-  const options = {
-    prompt: "画一个友好的 AI 机器人，胸口写着 “HELLO”",
-    style: "neon" as const,
-    placement: "center" as const,
-    variation: 2,
-  };
-  const first = generateAiArtwork(options);
-  const second = generateAiArtwork(options);
-  assert.deepEqual(first, second);
-  assert.equal(first.subject, "robot");
-  assert.equal(first.placement, "center");
-  assert.ok(first.events.some((event) => event.type === "text" && event.text === "HELLO"));
-  assert.deepEqual(parseGraffitiPayload(serializeGraffitiBatch(first.events))?.events, first.events);
-});
-
-test("AI auto-placement chooses the least occupied wall region", () => {
-  const existingEvents: GraffitiEvent[] = [
-    { type: "shape", shape: "rectangle", x: 20, y: 80, rectWidth: 720, rectHeight: 900, color: "#151515", width: 8 },
-    { type: "shape", shape: "rectangle", x: 620, y: 80, rectWidth: 650, rectHeight: 900, color: "#151515", width: 8 },
-  ];
-  const plan = generateAiArtwork({
-    prompt: "画一只猫",
-    placement: "auto",
-    existingEvents,
-  });
-  assert.equal(plan.placement, "right");
-  assert.ok(plan.events.length > 5);
-  assert.ok(plan.events.every((event) => {
-    const bounds = eventBounds(event);
-    return bounds.minX >= 0 && bounds.minY >= 0 && bounds.maxX <= WALL_WIDTH && bounds.maxY <= WALL_HEIGHT;
-  }));
 });

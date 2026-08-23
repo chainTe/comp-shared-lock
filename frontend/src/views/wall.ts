@@ -13,6 +13,7 @@ import {
   type Point,
   type ShapeKind,
 } from "../compWall";
+import { channelKind, channelRoute } from "../channelNames";
 import {
   anonymousIdentity,
   connectWallet,
@@ -151,6 +152,12 @@ export function wallView(wallHash: string): () => void {
   let channel: Channel | undefined = readCachedChannels()?.value.find(
     (candidate) => candidate.hash.toLowerCase() === wallHash.toLowerCase(),
   );
+  if ((channel?.kind ?? channelKind(wallHash)) === "chat") {
+    location.hash = channelRoute(wallHash, "chat");
+    return () => {
+      app.className = "";
+    };
+  }
   let records = recordsFromMessages(readCachedMessages(wallHash, 200)?.value ?? []);
   let draftEvents: GraffitiEvent[] = [];
   let provisionalEvent: GraffitiEvent | undefined;
@@ -184,7 +191,7 @@ export function wallView(wallHash: string): () => void {
   const header = el("header", { className: "wall-room-header" });
   const brand = el("a", { href: "#/", className: "wall-brand" });
   brand.appendChild(el("span", { className: "wall-brand-mark", "aria-hidden": "true" }, "C"));
-  brand.appendChild(el("span", {}, "COMP WALL"));
+  brand.appendChild(el("span", {}, "COMP SPACES"));
   header.appendChild(brand);
   const wallIdentity = el("div", { className: "room-identity" });
   const wallTitle = el("strong", {}, channel ? shortWallName(channel.name) : "#loading-wall");
@@ -199,12 +206,6 @@ export function wallView(wallHash: string): () => void {
   header.appendChild(refreshButton);
   const activityToggle = el("button", { className: "activity-toggle", type: "button", "aria-label": "Toggle activity" }, "☷") as HTMLButtonElement;
   header.appendChild(activityToggle);
-  const aiDrawLink = el(
-    "a",
-    { href: `#/ai?wall=${encodeURIComponent(wallHash)}`, className: "ai-draw-wall-link" },
-    "✦ AI Draw",
-  );
-  header.appendChild(aiDrawLink);
   const sponsorLink = el(
     "a",
     { href: `#/channel/${encodeURIComponent(wallHash)}/add-cell`, className: "sponsor-button" },
@@ -218,11 +219,12 @@ export function wallView(wallHash: string): () => void {
   app.appendChild(offlineBanner);
 
   const workspace = el("div", { className: "wall-workspace" });
-  const wallsAside = el("aside", { className: "walls-rail", "aria-label": "Walls" });
-  const wallsHeading = el("div", { className: "rail-heading" }, "WALLS");
+  const wallsAside = el("aside", { className: "walls-rail", "aria-label": "Spaces" });
+  const wallsHeading = el("div", { className: "rail-heading" }, "SPACES");
   wallsAside.appendChild(wallsHeading);
   const wallsList = el("nav", { className: "walls-mini-list" });
   wallsAside.appendChild(wallsList);
+  wallsAside.appendChild(el("a", { href: "#/channels/new", className: "new-wall-link" }, "+ New text room"));
   wallsAside.appendChild(el("a", { href: "#/walls/new", className: "new-wall-link" }, "+ New wall"));
   workspace.appendChild(wallsAside);
 
@@ -397,15 +399,17 @@ export function wallView(wallHash: string): () => void {
     wallsList.innerHTML = "";
     const channels = readCachedChannels()?.value ?? (channel ? [channel] : []);
     for (const item of channels) {
+      const cachedMessages = readCachedMessages(item.hash, 200)?.value ?? [];
+      const itemRecords = recordsFromMessages(cachedMessages);
+      const kind = item.kind ?? (itemRecords.length > 0 ? "wall" : cachedMessages.length > 0 ? "chat" : "wall");
       const link = el("a", {
-        href: `#/wall/${encodeURIComponent(item.hash)}`,
+        href: channelRoute(item.hash, kind),
         className: item.hash.toLowerCase() === wallHash.toLowerCase() ? "is-active" : "",
       });
-      link.appendChild(el("span", { className: "mini-wall-thumb" }, item.name.slice(0, 1).toUpperCase()));
+      link.appendChild(el("span", { className: `mini-wall-thumb ${kind === "chat" ? "is-chat" : ""}` }, kind === "chat" ? "Aa" : item.name.slice(0, 1).toUpperCase()));
       const copy = el("span", {});
       copy.appendChild(el("strong", {}, shortWallName(item.name)));
-      const count = recordsFromMessages(readCachedMessages(item.hash, 200)?.value ?? []).length;
-      copy.appendChild(el("small", {}, `${count} marks`));
+      copy.appendChild(el("small", {}, kind === "chat" ? `${cachedMessages.length} messages` : `${itemRecords.length} marks`));
       link.appendChild(copy);
       wallsList.appendChild(link);
     }

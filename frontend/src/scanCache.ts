@@ -1,4 +1,5 @@
 import { ccc } from "@ckb-ccc/shell";
+import { channelKind } from "./channelNames";
 import type { Channel, CompCell, Message } from "./types";
 
 const STORAGE_KEY = "comp-shared-lock.scan-cache.v1";
@@ -26,6 +27,7 @@ interface StoredCell {
 interface StoredChannel {
   hash: string;
   name: string;
+  kind?: Channel["kind"];
   maxFee: string;
   cells: StoredCell[];
   totalCapacity: string;
@@ -143,6 +145,7 @@ function storeChannel(channel: Channel): StoredChannel {
   return {
     hash: channel.hash,
     name: channel.name,
+    kind: channel.kind,
     maxFee: channel.maxFee.toString(),
     cells: channel.cells.map(storeCell),
     totalCapacity: channel.totalCapacity.toString(),
@@ -150,11 +153,13 @@ function storeChannel(channel: Channel): StoredChannel {
 }
 
 function restoreChannel(stored: StoredChannel): Channel {
+  const cells = stored.cells.map(restoreCell);
   return {
     hash: stored.hash,
     name: stored.name,
+    kind: stored.kind ?? channelKind(stored.hash, cells.map((cell) => cell.outputData)),
     maxFee: BigInt(stored.maxFee),
-    cells: stored.cells.map(restoreCell),
+    cells,
     totalCapacity: BigInt(stored.totalCapacity),
   };
 }

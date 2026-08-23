@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SKILL="$ROOT/plugins/comp-shared-lock/skills/comp-shared-lock"
-WALL_ARTIST_SKILL="$ROOT/plugins/comp-shared-lock/skills/comp-wall-artist"
 ESBUILD="$ROOT/frontend/node_modules/.bin/esbuild"
 DOWNLOADS="$ROOT/frontend/public/downloads"
 BANNER='import { createRequire as __compCreateRequire } from "node:module"; const require = __compCreateRequire(import.meta.url);'
@@ -33,14 +32,3 @@ find "$TMP/comp-shared-lock" -exec touch -t 198001010000 {} +
 )
 
 shasum -a 256 "$DOWNLOADS/comp-shared-lock-skill.zip"
-
-ARTIST_TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP" "$ARTIST_TMP"' EXIT
-cp -R "$WALL_ARTIST_SKILL" "$ARTIST_TMP/comp-wall-artist"
-find "$ARTIST_TMP/comp-wall-artist" -exec touch -t 198001010000 {} +
-(
-  cd "$ARTIST_TMP"
-  zip -X -q -r "$DOWNLOADS/comp-wall-artist-skill.zip" comp-wall-artist
-)
-
-shasum -a 256 "$DOWNLOADS/comp-wall-artist-skill.zip"

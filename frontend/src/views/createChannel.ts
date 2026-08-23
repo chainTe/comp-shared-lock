@@ -18,9 +18,10 @@ import {
   getWalletSigner,
 } from "../identity";
 import { EXPLORER_TX_URL } from "../rpc";
+import type { ChannelKind } from "../types";
 import { el, navBar, toast } from "./common";
 
-export function createChannelView(): () => void {
+export function createChannelView(initialKind: ChannelKind = "wall"): () => void {
   const app = document.getElementById("app")!;
   app.innerHTML = "";
   app.appendChild(navBar());
@@ -29,18 +30,22 @@ export function createChannelView(): () => void {
   let signer = getWalletSigner();
 
   const intro = el("div", { className: "card" });
-  intro.appendChild(el("h2", {}, "Create a Wall"));
-  intro.appendChild(
-    el(
-      "p",
-      { className: "muted" },
-      "Name a public canvas and add its first Paint Supply. Multiple COMP Cells become parallel paint lanes so everyone can post without holding CKB.",
-    ),
-  );
+  const introTitle = el("h2", {});
+  const introCopy = el("p", { className: "muted" });
+  intro.appendChild(introTitle);
+  intro.appendChild(introCopy);
   app.appendChild(intro);
 
   const form = el("div", { className: "card" });
-  form.appendChild(el("label", { for: "channel-name" }, "Wall name"));
+  form.appendChild(el("label", { for: "channel-kind" }, "Space format"));
+  const kindSelect = el("select", { id: "channel-kind" }) as HTMLSelectElement;
+  kindSelect.appendChild(el("option", { value: "wall" }, "Canvas wall — draw together") as HTMLOptionElement);
+  kindSelect.appendChild(el("option", { value: "chat" }, "Text room — talk together") as HTMLOptionElement);
+  kindSelect.value = initialKind;
+  form.appendChild(kindSelect);
+
+  const nameLabel = el("label", { for: "channel-name" });
+  form.appendChild(nameLabel);
   const nameInput = el("input", {
     id: "channel-name",
     type: "text",
@@ -62,7 +67,8 @@ export function createChannelView(): () => void {
 
   const valueRow = el("div", { className: "row" });
   const capacityCol = el("div", { className: "col" });
-  capacityCol.appendChild(el("label", { for: "channel-capacity" }, "Paint per lane (CKB)"));
+  const capacityLabel = el("label", { for: "channel-capacity" });
+  capacityCol.appendChild(capacityLabel);
   const capacityInput = el("input", {
     id: "channel-capacity",
     type: "number",
@@ -77,7 +83,8 @@ export function createChannelView(): () => void {
   capacityCol.appendChild(capacityHint);
 
   const countCol = el("div", { className: "col" });
-  countCol.appendChild(el("label", { for: "channel-cell-count" }, "Parallel paint lanes"));
+  const countLabel = el("label", { for: "channel-cell-count" });
+  countCol.appendChild(countLabel);
   const cellCountInput = el("input", {
     id: "channel-cell-count",
     type: "number",
@@ -114,18 +121,36 @@ export function createChannelView(): () => void {
 
   const actions = el("div", { className: "row" });
   const connectBtn = el("button", { className: "col secondary" }, "Connect Wallet") as HTMLButtonElement;
-  const submitBtn = el("button", { className: "col" }, "Create Wall") as HTMLButtonElement;
+  const submitBtn = el("button", { className: "col" }) as HTMLButtonElement;
   actions.appendChild(connectBtn);
   actions.appendChild(submitBtn);
   form.appendChild(actions);
   app.appendChild(form);
 
-  function preview(): { name: string; hash: string; cellCount: number } | undefined {
+  function selectedKind(): ChannelKind {
+    return kindSelect.value === "chat" ? "chat" : "wall";
+  }
+
+  function renderKindCopy(): void {
+    const isChat = selectedKind() === "chat";
+    introTitle.textContent = isChat ? "Create a Text Room" : "Create a Wall";
+    introCopy.textContent = isChat
+      ? "Start a public text room with a shared Message Supply. Multiple COMP Cells become parallel message lanes so anyone can talk without holding CKB."
+      : "Name a public canvas and add its first Paint Supply. Multiple COMP Cells become parallel paint lanes so everyone can post without holding CKB.";
+    nameLabel.textContent = isChat ? "Room name" : "Wall name";
+    nameInput.placeholder = isChat ? "General" : "CKB Summit 2026";
+    capacityLabel.textContent = isChat ? "Messages per lane (CKB)" : "Paint per lane (CKB)";
+    countLabel.textContent = isChat ? "Parallel message lanes" : "Parallel paint lanes";
+  }
+
+  function preview(): { name: string; hash: string; cellCount: number; kind: ChannelKind } | undefined {
+    renderKindCopy();
+    const kind = selectedKind();
     let definition: { name: string; hash: string };
     try {
-      const metadata = channelMetadata(nameInput.value);
+      const metadata = channelMetadata(nameInput.value, kind);
       const hash = channelHashFromName(metadata.name);
-      const outputData = encodeChannelMetadata(metadata.name);
+      const outputData = encodeChannelMetadata(metadata.name, kind);
       const minimum = minimumCompCellCapacity(outputData);
       slugPreview.textContent = `comp-channel-${metadata.slug}`;
       hashPreview.textContent = hash;
@@ -149,12 +174,14 @@ export function createChannelView(): () => void {
       const totalCapacity = capacity * BigInt(cellCount);
       const maxFee = ccc.fixedPointFrom(maxFeeInput.value);
       const estimatedPosts = maxFee > 0n ? totalCapacity / maxFee : 0n;
-      countHint.textContent = `Creates ${cellCount} paint ${cellCount === 1 ? "lane" : "lanes"}; ${ccc.fixedPointToString(totalCapacity)} CKB total · up to ~${estimatedPosts.toLocaleString()} posts at the fee ceiling.`;
+      const laneKind = kind === "chat" ? "message" : "paint";
+      countHint.textContent = `Creates ${cellCount} ${laneKind} ${cellCount === 1 ? "lane" : "lanes"}; ${ccc.fixedPointToString(totalCapacity)} CKB total · up to ~${estimatedPosts.toLocaleString()} posts at the fee ceiling.`;
       countHint.className = "muted";
+      const noun = kind === "chat" ? "Text Room" : "Wall";
       submitBtn.textContent = cellCount === 1
-        ? "Create Wall"
-        : `Create Wall with ${cellCount} lanes`;
-      return { ...definition, cellCount };
+        ? `Create ${noun}`
+        : `Create ${noun} with ${cellCount} lanes`;
+      return { ...definition, cellCount, kind };
     } catch (e) {
       countHint.textContent = e instanceof Error ? e.message : String(e);
       countHint.className = "err";
@@ -173,6 +200,7 @@ export function createChannelView(): () => void {
   }
 
   nameInput.addEventListener("input", preview);
+  kindSelect.addEventListener("change", preview);
   capacityInput.addEventListener("input", preview);
   cellCountInput.addEventListener("input", preview);
   maxFeeInput.addEventListener("input", preview);
@@ -209,6 +237,7 @@ export function createChannelView(): () => void {
         capacityInput.value,
         maxFeeInput.value,
         definition.cellCount,
+        definition.kind,
       );
       rememberChannelName(result.channelHash, definition.name);
       toast(`${result.cellCount} channel ${result.cellCount === 1 ? "Cell" : "Cells"} submitted: ${result.txHash.slice(0, 16)}…`, "ok");
@@ -218,10 +247,10 @@ export function createChannelView(): () => void {
         el(
           "h3",
           { className: "ok" },
-          `Wall submitted with ${result.cellCount} paint ${result.cellCount === 1 ? "lane" : "lanes"}`,
+          `${definition.kind === "chat" ? "Text room" : "Wall"} submitted with ${result.cellCount} ${definition.kind === "chat" ? "message" : "paint"} ${result.cellCount === 1 ? "lane" : "lanes"}`,
         ),
       );
-      form.appendChild(el("p", {}, `${definition.name} will appear in Wall Explorer after testnet confirmation.`));
+      form.appendChild(el("p", {}, `${definition.name} will appear in Space Explorer after testnet confirmation.`));
       form.appendChild(el("label", {}, "Channel hash"));
       form.appendChild(el("pre", {}, result.channelHash));
       form.appendChild(
@@ -237,8 +266,8 @@ export function createChannelView(): () => void {
       successActions.appendChild(
         el(
           "a",
-          { href: `#/wall/${encodeURIComponent(result.channelHash)}` },
-          "Open wall after confirmation →",
+          { href: `${definition.kind === "chat" ? "#/channel" : "#/wall"}/${encodeURIComponent(result.channelHash)}` },
+          `Open ${definition.kind === "chat" ? "room" : "wall"} after confirmation →`,
         ),
       );
       form.appendChild(successActions);

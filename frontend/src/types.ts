@@ -1,5 +1,7 @@
 import { ccc } from "@ckb-ccc/shell";
 
+export type ChannelKind = "chat" | "wall";
+
 export interface CompMessage {
   public_key: string | null;
   /** Read-only compatibility for messages created by the old witness schema. */
@@ -24,6 +26,8 @@ export interface CompCell {
 export interface Channel {
   hash: string;
   name: string;
+  /** Presentation selected by on-chain metadata or a legacy-channel override. */
+  kind?: ChannelKind;
   maxFee: bigint;
   cells: CompCell[];
   totalCapacity: bigint;
