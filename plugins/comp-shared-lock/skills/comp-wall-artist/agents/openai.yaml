@@ -1,0 +1,6 @@
+interface:
+  display_name: "COMP Wall Artist"
+  short_description: "让 Codex 或 Claude 一键到 COMP Wall 作画"
+  brand_color: "#FF4F87"
+  default_prompt: "Use $comp-wall-artist to draw a colorful mural on the COMP Wall I am viewing and post it anonymously."
+

@@ -25,6 +25,28 @@ export interface ResolvedMessageTransaction {
 
 const pendingRecords = new Map<string, PendingRecord>();
 
+async function blockMetadata(
+  blockNumber: bigint,
+  txHash: string,
+): Promise<{ timestamp?: bigint; transactionIndex?: number }> {
+  try {
+    const block = await client.getBlockByNumber(blockNumber);
+    const index = block?.transactions.findIndex(
+      (transaction) => transaction.hash().toLowerCase() === txHash.toLowerCase(),
+    );
+    return {
+      timestamp: block?.header.timestamp,
+      transactionIndex: index !== undefined && index >= 0 ? index : undefined,
+    };
+  } catch {
+    try {
+      return { timestamp: (await client.getHeaderByNumber(blockNumber))?.timestamp };
+    } catch {
+      return {};
+    }
+  }
+}
+
 async function cellToCompCell(cell: ccc.Cell): Promise<CompCell | undefined> {
   try {
     const { channelHash, maxFee } = parseCompArgs(cell.cellOutput.lock.args);
@@ -136,20 +158,18 @@ export async function resolveMessageTransaction(
   const inputCapacity = inputCell.cellOutput.capacity;
   const outputCapacity = outputIndex < 0 ? undefined : tx.outputs[outputIndex].capacity;
   const blockNumber = response.blockNumber;
-  let timestamp: bigint | undefined;
-  if (blockNumber !== undefined) {
-    try {
-      timestamp = (await client.getHeaderByNumber(blockNumber))?.timestamp;
-    } catch {
-      // Block metadata is optional; the transaction itself is already decoded.
-    }
-  }
+  const metadata = blockNumber === undefined
+    ? {}
+    : await blockMetadata(blockNumber, txHash);
 
   const message: Message = {
     txHash,
     status: response.status === "committed" ? "confirmed" : "pending",
     blockNumber,
-    timestamp,
+    blockHash: response.blockHash,
+    timestamp: metadata.timestamp,
+    transactionIndex: metadata.transactionIndex,
+    compInputIndex: inputIndex,
     author: compMessage.public_key ?? compMessage.address ?? "Anonymous",
     payload: String(compMessage.extensions.payload),
     inputCapacity,
@@ -271,18 +291,16 @@ async function loadConfirmedMessages(
       const compMsg = parseCompMessage(tx, inputIndex);
       if (!compMsg) continue;
 
-      let timestamp: bigint | undefined;
-      try {
-        timestamp = (await client.getHeaderByNumber(record.blockNumber))?.timestamp;
-      } catch {
-        // ignore
-      }
+      const metadata = await blockMetadata(record.blockNumber, record.txHash);
 
       messages.push({
         txHash: record.txHash,
         status: response.status === "committed" ? "confirmed" : "pending",
         blockNumber: response.blockNumber ?? record.blockNumber,
-        timestamp,
+        blockHash: response.blockHash,
+        timestamp: metadata.timestamp,
+        transactionIndex: metadata.transactionIndex,
+        compInputIndex: inputIndex,
         author: compMsg.public_key ?? compMsg.address ?? "Anonymous",
         payload: String(compMsg.extensions.payload),
         capacityDelta:
@@ -358,6 +376,7 @@ export async function loadPendingMessages(channelHash: string): Promise<Message[
         status: "pending",
         author: compMsg.public_key ?? compMsg.address ?? "Anonymous",
         payload: String(compMsg.extensions.payload),
+        compInputIndex: inputIndex >= 0 ? inputIndex : 0,
       });
     } catch (e) {
       console.error("loadPendingMessages", txHash, e);
@@ -392,11 +411,11 @@ export async function resolveChannelState(
   };
 }
 
-export function trackPendingTx(txHash: string, channelHash: string) {
+export function trackPendingTx(txHash: string, channelHash: string, submittedAt = Date.now()) {
   pendingRecords.set(txHash, {
     txHash,
     channelHash,
-    submittedAt: Date.now(),
+    submittedAt,
   });
 }
 

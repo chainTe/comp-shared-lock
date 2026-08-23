@@ -34,7 +34,10 @@ interface StoredChannel {
 interface StoredMessage {
   txHash: string;
   blockNumber?: string;
+  blockHash?: string;
   timestamp?: string;
+  transactionIndex?: number;
+  compInputIndex?: number;
   author: string;
   payload: string;
   capacityDelta?: string;
@@ -160,7 +163,10 @@ function storeMessage(message: Message): StoredMessage {
   return {
     txHash: message.txHash,
     blockNumber: message.blockNumber?.toString(),
+    blockHash: message.blockHash,
     timestamp: message.timestamp?.toString(),
+    transactionIndex: message.transactionIndex,
+    compInputIndex: message.compInputIndex,
     author: message.author,
     payload: message.payload,
     capacityDelta: message.capacityDelta?.toString(),
@@ -174,7 +180,10 @@ function restoreMessage(stored: StoredMessage): Message {
     txHash: stored.txHash,
     status: "confirmed",
     blockNumber: stored.blockNumber === undefined ? undefined : BigInt(stored.blockNumber),
+    blockHash: stored.blockHash,
     timestamp: stored.timestamp === undefined ? undefined : BigInt(stored.timestamp),
+    transactionIndex: stored.transactionIndex,
+    compInputIndex: stored.compInputIndex,
     author: stored.author,
     payload: stored.payload,
     capacityDelta: stored.capacityDelta === undefined ? undefined : BigInt(stored.capacityDelta),

@@ -33,7 +33,12 @@ export interface Message {
   txHash: string;
   status: "pending" | "confirmed";
   blockNumber?: bigint;
+  blockHash?: string;
   timestamp?: bigint;
+  /** Deterministic position of the transaction inside its committed block. */
+  transactionIndex?: number;
+  /** Input index whose witness carries the COMP message. */
+  compInputIndex?: number;
   author: string;
   payload: string;
   capacityDelta?: bigint;
