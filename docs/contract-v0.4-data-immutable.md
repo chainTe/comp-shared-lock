@@ -77,11 +77,11 @@ Step 10 compares length first, then bytes; a length mismatch is `DataMutated`.
 
 ### Error codes
 
-v0.3 codes `1..=12` keep their meaning. One code is appended:
+v0.3 codes `1..=16` keep their meaning (code 5 is unused). One code is appended:
 
 | code | name | meaning |
 | --- | --- | --- |
-| 13 | `DataMutated` | successor `data` differs from the input `data` |
+| 17 | `DataMutated` | successor `data` differs from the input `data` |
 
 ## 7. Transaction invariants
 
@@ -147,7 +147,7 @@ Expected scripts: COMP lock only. Fee = `estimateFee(3600)` ≤ `max_fee`.
 
 ### 11.3 Negative: mutate data
 
-Same as 11.2 with `outputs_data: [ <metadata with sponsor renamed> ]` → `DataMutated` (13).
+Same as 11.2 with `outputs_data: [ <metadata with sponsor renamed> ]` → `DataMutated` (17).
 
 ## 12. Test matrix
 
