@@ -6,16 +6,22 @@
 
 ## 主张
 
-**谁供给容量，谁的署名就写在这片空间上。**
+**谁的 cell，广告就跟着谁。**
 
-- 创建 gas cell 时，把创建者/赞助方写进频道元数据
-- 整份元数据的哈希就是 `channel_hash`（lock args 的前 32 字节）
-- lock args 由合约保证逐字节不可变 → **署名天生不可篡改**，伪造的 data 一算哈希就露馅
-- 每笔交易在前端显示「由 X 赞助」；客户端不认，也不影响合约
+- 每个赞助方自己建 cell，data 里写自己的名字和链接
+- 同一频道可以有很多个 cell（多个赞助商）
+- 用户用哪个 cell 发交易，展示的就是那个 cell 的赞助商
+- 合约只要保证 **花的时候 data 不能变**，赞助信息就改不了
+
+## 为什么这样分
+
+频道哈希仍按名字算（`frontend/src/channelNames.ts`），所以同名频道天然共享一个身份；赞助商不参与哈希，可以各自独立地加进来。
+
+不需要数组，也不需要注册表：多一个赞助商，就是多一个 cell。
 
 ## 数据格式
 
-频道元数据（创建交易的 cell data）：
+cell data（创建时写入，永不变）：
 
 ```json
 {
@@ -25,44 +31,30 @@
   "name": "小鲸",
   "slug": "xiaojing",
   "kind": "chat",
-  "creator": "0x…",
   "sponsor": { "name": "X", "url": "https://example.com" }
 }
 ```
 
-`channel_hash = blake2b_256(canonical_json(metadata))`，canonical 指键排序、无空格的 JSON。
-
-## 校验
-
-客户端读频道 cell 时：
-
-1. 取 lock args 的前 32 字节作为 `channel_hash`
-2. 对元数据做 canonical JSON 与 blake2b
-3. 对不上就说明元数据被改过，展示时降级为「未验证」
-
-参考实现：`scripts/lib/sponsor.mjs`（`metadataHash` / `verifyMetadata`）。
-
-## 兼容与部署
-
-老频道（`channel_hash` 由名字算出，见 `frontend/src/channelNames.ts`）校验必然不通过，前端按「历史频道」处理即可，不影响收发消息。
-
-建议 v0.4 作为**新部署**（新的 code hash）上线：老频道继续跑 v0.3，新频道用哈希绑定的规则，避免升级 Type ID 时改变老 cell 的执行语义。
-
 ## 合约（v0.4 草案）
 
-`args` 结构不变：`channel_hash(32) || max_fee(8, LE)`，用 `max_fee` 的最高位当**署名模式开关**：
+在 v0.3 的规则上加一条：
 
-- `flag = 0` → 老规则（v0.3 行为），data 不校验，老频道照常跑
-- `flag = 1` → 强制校验：
-  1. `successor.data` 非空
-  2. `blake2b_256(successor.data) == args.channel_hash`（前 32 字节）
+- `successor.data` 必须与 `input.data` **逐字节一致**，否则返回 `DataMutated`
 
-因此只需要一份新部署，新频道按需打开开关，老频道行为完全不变。
+`args` 结构不变：`channel_hash(32) || max_fee(8, LE)`，无需标志位。
 
-由于哈希绑定了整份 data，伪造「同哈希、不同 data」的 cell 等于制造哈希碰撞，不可行。
+## 展示
+
+1. 客户端按 lock args 找到频道下的所有 cell
+2. 读每个 cell 的 data，取出 `sponsor`
+3. 用户发消息时用某个 cell，就在这条消息旁边显示「由 X 赞助」
 
 ## 权衡
 
-- 署名不可删 → 不好的赞助方也只能靠前端屏蔽，合约管不了
-- 广告文字放元数据要占容量（1 字节 ≈ 1 CKB），所以只放短名和链接
-- 需要真有赞助商才值得做；现在先把约定和校验实现放进去，前端以后接
+- 改名/换赞助商都不行，只能重新建 cell（旧 cell 自然废弃）
+- 同名的假频道可以自己建 cell，但它只能代表它自己的广告，冒充不了别人的 cell
+- data 占容量（1 字节 ≈ 1 CKB），广告文案要短
+
+## 参考实现
+
+`scripts/lib/sponsor.mjs`：`parseMetadata(data)`、`isImmutableTransition(inputData, outputData)`。
