@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   MAX_EVENTS_PER_POST,
+  WALL_BINARY_VERSION,
   WALL_HEIGHT,
   WALL_WIDTH,
   eventBounds,
@@ -14,6 +15,7 @@ import {
   type GraffitiEvent,
   type GraffitiRecord,
 } from "../src/compWall.ts";
+import { WALL_BINARY_PREFIX, decodeWallBinary, encodeWallBinary, encodeWallV2Payload } from "../src/wallBinary.ts";
 import type { Message } from "../src/types.ts";
 import {
   channelHashFromName,
@@ -51,12 +53,37 @@ test("channel metadata preserves chat/wall presentation without changing the det
   assert.equal(channelKind(hash, [wallData]), "wall");
 });
 
-test("all MVP event types round-trip through the comp-wall v1 batch codec", () => {
+test("v2 writer and reader cover every wall event type", () => {
   const payload = serializeGraffitiBatch(fixtures);
+  assert.ok(payload.startsWith(WALL_BINARY_PREFIX));
   const decoded = parseGraffitiPayload(payload);
-  assert.deepEqual(decoded?.events, fixtures);
+  assert.deepEqual(decoded?.events, fixtures.map((event) =>
+    "color" in event ? { ...event, color: event.color.toLowerCase() } : event));
   assert.deepEqual(decoded?.canvas, [WALL_WIDTH, WALL_HEIGHT]);
   assert.equal(decoded?.type, "batch");
+  assert.equal(decoded?.version, WALL_BINARY_VERSION);
+});
+
+test("historical v1 JSON batches still replay", () => {
+  const payload = JSON.stringify({
+    protocol: "comp-wall", version: 1, type: "batch", canvas: [WALL_WIDTH, WALL_HEIGHT], events: fixtures,
+  });
+  const decoded = parseGraffitiPayload(payload);
+  assert.equal(decoded?.version, 1);
+  assert.deepEqual(decoded?.events, fixtures);
+});
+
+test("v1 history and v2 posts replay in one wall", () => {
+  const v1 = JSON.stringify({
+    protocol: "comp-wall", version: 1, type: "batch", canvas: [WALL_WIDTH, WALL_HEIGHT], events: [fixtures[0]],
+  });
+  const v2 = serializeGraffitiBatch([fixtures[1]]);
+  const records = recordsFromMessages([
+    { txHash: "0xnew", status: "confirmed", blockNumber: 2n, author: "Anonymous", payload: v2 },
+    { txHash: "0xold", status: "confirmed", blockNumber: 1n, author: "Anonymous", payload: v1 },
+  ]);
+  assert.deepEqual(records.map((record) => record.eventId), ["0xold:0:0", "0xnew:0:0"]);
+  assert.deepEqual(records.map((record) => record.event.type), ["stroke", "erase"]);
 });
 
 test("codec accepts the early single-event fixture and normalizes it to a batch", () => {
@@ -77,6 +104,64 @@ test("invalid and oversized semantic inputs are rejected", () => {
     () => serializeGraffitiBatch(Array.from({ length: MAX_EVENTS_PER_POST + 1 }, () => fixtures[0])),
     /at most/,
   );
+});
+
+test("v2 erase uses the documented colorless bytes", () => {
+  const erase: GraffitiEvent = { type: "erase", points: [[1, 2], [3, 4]], width: 5 };
+  const bytes = encodeWallBinary([erase]);
+  assert.equal(Buffer.from(bytes).toString("hex"), "435702800738040102050200010002000404");
+  assert.deepEqual(decodeWallBinary(bytes).events, [erase]);
+});
+
+test("v2 quantizes coordinates and normalizes reversed rectangles", () => {
+  const events: GraffitiEvent[] = [
+    { type: "stroke", points: [[1.2, 2.7], [4.8, 5.1]], color: "#AABBCC", width: 3 },
+    { type: "shape", shape: "rectangle", x: 100, y: 100, rectWidth: -20, rectHeight: -30, color: "#AABBCC", width: 2 },
+  ];
+  const payload = serializeGraffitiBatch(events);
+  assert.ok(payload.startsWith(WALL_BINARY_PREFIX));
+  assert.deepEqual(parseGraffitiPayload(payload)?.events, [
+    { type: "stroke", points: [[1, 3], [5, 5]], color: "#aabbcc", width: 3 },
+    { type: "shape", shape: "rectangle", x: 80, y: 70, rectWidth: 20, rectHeight: 30, color: "#aabbcc", width: 2 },
+  ]);
+});
+
+test("writer retains v1 JSON for geometry that collapses on quantization", () => {
+  const event: GraffitiEvent = {
+    type: "shape", shape: "rectangle", x: 1.1, y: 1.1,
+    rectWidth: 0.2, rectHeight: 0.2, color: "#112233", width: 2,
+  };
+  const payload = serializeGraffitiBatch([event]);
+  assert.ok(payload.startsWith("{"));
+  assert.deepEqual(parseGraffitiPayload(payload)?.events, [event]);
+});
+
+test("writer retains v1 JSON when text cannot round-trip through UTF-8", () => {
+  const event: GraffitiEvent = {
+    type: "text", x: 10, y: 20, text: "\ud800", color: "#112233", size: 16,
+  };
+  const payload = serializeGraffitiBatch([event]);
+  assert.ok(payload.startsWith("{"));
+  assert.deepEqual(parseGraffitiPayload(payload)?.events, [event]);
+});
+
+test("v2 reader rejects truncated, trailing and malformed payloads", () => {
+  const bytes = encodeWallBinary([fixtures[0]]);
+  assert.equal(parseGraffitiPayload(WALL_BINARY_PREFIX + "?"), undefined);
+  assert.equal(parseGraffitiPayload(WALL_BINARY_PREFIX + btoa(String.fromCharCode(...bytes.subarray(0, -1)))), undefined);
+  assert.equal(parseGraffitiPayload(WALL_BINARY_PREFIX + btoa(String.fromCharCode(...bytes, 0))), undefined);
+  assert.equal(parseGraffitiPayload(encodeWallV2Payload([fixtures[0]]) + "="), undefined);
+});
+
+test("v2 string payload is smaller for a long stroke", () => {
+  const stroke: GraffitiEvent = {
+    type: "stroke", color: "#7861ff", width: 8,
+    points: Array.from({ length: 120 }, (_, i) => [100 + i, 200 + i] as [number, number]),
+  };
+  const v1 = JSON.stringify({ protocol: "comp-wall", version: 1, type: "batch", canvas: [WALL_WIDTH, WALL_HEIGHT], events: [stroke] });
+  const v2 = serializeGraffitiBatch([stroke]);
+  assert.ok(v2.startsWith(WALL_BINARY_PREFIX));
+  assert.ok(v2.length < v1.length / 2);
 });
 
 test("message decoding assigns stable event ids and chronological chain order", () => {
