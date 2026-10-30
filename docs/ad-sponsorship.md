@@ -50,10 +50,14 @@
 
 ## 合约（v0.4 草案）
 
-在现有规则上加两条：
+`args` 结构不变：`channel_hash(32) || max_fee(8, LE)`，用 `max_fee` 的最高位当**署名模式开关**：
 
-1. `successor.data` 非空
-2. `blake2b_256(successor.data) == args.channel_hash`（`args` 前 32 字节）
+- `flag = 0` → 老规则（v0.3 行为），data 不校验，老频道照常跑
+- `flag = 1` → 强制校验：
+  1. `successor.data` 非空
+  2. `blake2b_256(successor.data) == args.channel_hash`（前 32 字节）
+
+因此只需要一份新部署，新频道按需打开开关，老频道行为完全不变。
 
 由于哈希绑定了整份 data，伪造「同哈希、不同 data」的 cell 等于制造哈希碰撞，不可行。
 
