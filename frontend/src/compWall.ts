@@ -1,7 +1,9 @@
 import type { Message } from "./types";
+import { WALL_BINARY_PREFIX, decodeWallV2Payload, encodeWallV2Payload } from "./wallBinary.ts";
 
 export const WALL_PROTOCOL = "comp-wall" as const;
 export const WALL_VERSION = 1 as const;
+export const WALL_BINARY_VERSION = 2 as const;
 export const WALL_WIDTH = 1920;
 export const WALL_HEIGHT = 1080;
 export const MAX_EVENTS_PER_POST = 64;
@@ -70,7 +72,7 @@ export type GraffitiEvent = StrokeEvent | EraseEvent | TextEvent | ShapeEvent;
 
 export interface GraffitiBatch {
   protocol: typeof WALL_PROTOCOL;
-  version: typeof WALL_VERSION;
+  version: typeof WALL_VERSION | typeof WALL_BINARY_VERSION;
   type: "batch";
   canvas: [typeof WALL_WIDTH, typeof WALL_HEIGHT];
   events: GraffitiEvent[];
@@ -259,7 +261,20 @@ export function graffitiBatch(events: GraffitiEvent[]): GraffitiBatch {
 }
 
 export function serializeGraffitiBatch(events: GraffitiEvent[]): string {
-  const payload = JSON.stringify(graffitiBatch(events));
+  const batch = graffitiBatch(events);
+  let payload: string | undefined;
+  try {
+    const binary = encodeWallV2Payload(batch.events);
+    const decoded = decodeWallV2Payload(binary);
+    if (decoded.canvas[0] === WALL_WIDTH && decoded.canvas[1] === WALL_HEIGHT &&
+      decoded.events.length === batch.events.length &&
+      decoded.events.every((event) => validateGraffitiEvent(event) !== undefined)) {
+      payload = binary;
+    }
+  } catch {
+    // Keep valid v1 events when integer quantization cannot represent them.
+  }
+  payload ??= JSON.stringify(batch);
   const size = new TextEncoder().encode(payload).length;
   if (size > MAX_PAYLOAD_BYTES) {
     throw new Error(`Post is ${size.toLocaleString()} bytes; the limit is ${MAX_PAYLOAD_BYTES.toLocaleString()} bytes.`);
@@ -269,6 +284,23 @@ export function serializeGraffitiBatch(events: GraffitiEvent[]): string {
 
 export function parseGraffitiPayload(payload: string): GraffitiBatch | undefined {
   if (new TextEncoder().encode(payload).length > MAX_PAYLOAD_BYTES) return;
+  if (payload.startsWith(WALL_BINARY_PREFIX)) {
+    try {
+      const decoded = decodeWallV2Payload(payload);
+      if (decoded.canvas[0] !== WALL_WIDTH || decoded.canvas[1] !== WALL_HEIGHT) return;
+      const events = decoded.events.map(validateGraffitiEvent);
+      if (events.some((event) => !event)) return;
+      return {
+        protocol: WALL_PROTOCOL,
+        version: WALL_BINARY_VERSION,
+        type: "batch",
+        canvas: [WALL_WIDTH, WALL_HEIGHT],
+        events: events as GraffitiEvent[],
+      };
+    } catch {
+      return;
+    }
+  }
   let decoded: unknown;
   try {
     decoded = JSON.parse(payload);
