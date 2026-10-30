@@ -4,6 +4,7 @@ import { createChannelView } from "./views/createChannel";
 import { messageDetailView } from "./views/messageDetail";
 import { wallExplorerView } from "./views/wallExplorer";
 import { wallView } from "./views/wall";
+import { pkBoardView } from "./views/pkBoard";
 
 export interface Route {
   name: string;
@@ -38,6 +39,12 @@ const routes: RouteDefinition[] = [
     name: "addCell",
     keys: ["hash"],
     render: (p) => addCellView(p.hash),
+  },
+  {
+    pattern: /^\/pk\/([^/]+)\/([^/]+)$/,
+    name: "pkBoard",
+    keys: ["a", "b"],
+    render: (p) => pkBoardView(p.a, p.b),
   },
   {
     pattern: /^\/channel\/([^/]+)$/,
