@@ -9,8 +9,8 @@
 **谁供给容量，谁的署名就写在这片空间上。**
 
 - 创建 gas cell 时，把创建者/赞助方写进频道元数据
-- 元数据的哈希就是 `channel_hash`（lock args 的前 32 字节）
-- lock args 由合约保证逐字节不可变 → **署名天生不可篡改**
+- 整份元数据的哈希就是 `channel_hash`（lock args 的前 32 字节）
+- lock args 由合约保证逐字节不可变 → **署名天生不可篡改**，伪造的 data 一算哈希就露馅
 - 每笔交易在前端显示「由 X 赞助」；客户端不认，也不影响合约
 
 ## 数据格式
@@ -42,9 +42,20 @@
 
 参考实现：`scripts/lib/sponsor.mjs`（`metadataHash` / `verifyMetadata`）。
 
-## 兼容
+## 兼容与部署
 
-老频道（`channel_hash` 是随机值）校验必然不通过，前端按「历史频道」处理即可，不影响收发消息。
+老频道（`channel_hash` 由名字算出，见 `frontend/src/channelNames.ts`）校验必然不通过，前端按「历史频道」处理即可，不影响收发消息。
+
+建议 v0.4 作为**新部署**（新的 code hash）上线：老频道继续跑 v0.3，新频道用哈希绑定的规则，避免升级 Type ID 时改变老 cell 的执行语义。
+
+## 合约（v0.4 草案）
+
+在现有规则上加两条：
+
+1. `successor.data` 非空
+2. `blake2b_256(successor.data) == args.channel_hash`（`args` 前 32 字节）
+
+由于哈希绑定了整份 data，伪造「同哈希、不同 data」的 cell 等于制造哈希碰撞，不可行。
 
 ## 权衡
 
