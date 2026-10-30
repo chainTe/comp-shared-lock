@@ -55,6 +55,24 @@ export function channelHashFromName(name: string): string {
   return ccc.hexFrom(ccc.hashCkb(ccc.bytesFrom(preimage, "utf8")));
 }
 
+/**
+ * 新的哈希派生：把 kind 也绑进去，避免"同名聊天室 / 同名画布"撞到同一个哈希。
+ * 老频道继续用 channelHashFromName 的派生，读取时两种都认。
+ */
+export function channelHashFor(name: string, kind: ChannelKind): string {
+  const preimage = `${CHANNEL_PREFIX}${kind}-${channelSlug(name)}`;
+  return ccc.hexFrom(ccc.hashCkb(ccc.bytesFrom(preimage, "utf8")));
+}
+
+/** 哈希是否匹配这个名字：旧派生或带 kind 的新派生都算。 */
+export function channelHashMatches(hash: string, name: string, kind?: ChannelKind): boolean {
+  const normalized = hash.toLowerCase();
+  if (channelHashFromName(name).toLowerCase() === normalized) return true;
+  if (kind) return channelHashFor(name, kind).toLowerCase() === normalized;
+  return channelHashFor(name, "chat").toLowerCase() === normalized
+    || channelHashFor(name, "wall").toLowerCase() === normalized;
+}
+
 export function channelMetadata(name: string, kind: ChannelKind = "wall"): ChannelMetadata {
   const displayName = name.normalize("NFKC").trim();
   return {
@@ -103,7 +121,7 @@ export function channelKind(hash: string, outputData: string[] = []): ChannelKin
     const metadata = parseChannelMetadata(data);
     if (
       metadata?.kind
-      && channelHashFromName(metadata.name).toLowerCase() === normalizedHash
+      && channelHashMatches(normalizedHash, metadata.name, metadata.kind)
     ) {
       return metadata.kind;
     }
@@ -147,7 +165,7 @@ export function channelName(hash: string, outputData: string[] = []): string {
 
   for (const data of outputData) {
     const metadata = parseChannelMetadata(data);
-    if (metadata && channelHashFromName(metadata.name).toLowerCase() === normalizedHash) {
+    if (metadata && channelHashMatches(normalizedHash, metadata.name, metadata.kind)) {
       return metadata.name;
     }
   }

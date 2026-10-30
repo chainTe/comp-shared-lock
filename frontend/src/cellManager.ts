@@ -1,7 +1,7 @@
 import { ccc } from "@ckb-ccc/shell";
 import { client, MESSAGE_FEE_RATE } from "./rpc";
 import { buildCompArgs, loadDeployment } from "./config";
-import { channelHashFromName, encodeChannelMetadata } from "./channelNames";
+import { channelHashFor, encodeChannelMetadata } from "./channelNames";
 import type { ChannelKind } from "./types";
 
 // 8-byte capacity + 33-byte script header + 40-byte COMP lock args.
@@ -124,7 +124,7 @@ export async function createChannelWithSigner(
   cellCount: string | number = 1,
   kind: ChannelKind = "wall",
 ): Promise<{ txHash: string; channelHash: string; outputData: string; cellCount: number }> {
-  const channelHash = channelHashFromName(name);
+  const channelHash = channelHashFor(name, kind);
   const outputData = encodeChannelMetadata(name, kind);
   const count = normalizeCellCount(cellCount);
   const txHash = await addCellsWithSigner(
