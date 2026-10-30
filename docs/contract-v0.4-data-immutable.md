@@ -109,9 +109,21 @@ v0.3 codes `1..=16` keep their meaning (code 5 is unused). One code is appended:
 ## 9. Serialization and hashing
 
 - spec hash: `blake2b_256` (CKB default)
-- metadata: UTF-8 JSON, short keys recommended — e.g. `{"protocol":"comp","version":2,"type":"channel","name":"小鲸","slug":"xiaojing","kind":"chat","sponsor":{"name":"X"}}`
+- metadata: **comp-meta v2**, a compact binary layout (v0.3 channels used JSON; readers fall back to JSON when byte 0 is not `0x02`):
+
+```
+[0]      version 0x02
+[1]      flags (bit0 = sponsor present)
+[2..4]   name_len (u16 LE)
+[4..]    name (UTF-8)
+[..]     kind (u8: 0=chat, 1=wall)
+[..]     sponsor_len (u8, 0 = none)
+[..]     sponsor (UTF-8)
+```
+
+  Example: `name="小鲸", kind=chat, sponsor="鱼铺"` → 18 bytes `02010600e5b08fe9b2b80006e9b1bce993ba`
 - `channel_hash` derivation is **unchanged** from v0.3 (`blake2b_256("comp-channel-" + slug(name))`), so a v0.4 channel and a v0.3 channel with the same name share the identifier
-- capacity: CKB occupies 1 CKB per byte, so the metadata above ≈ 190 CKB of the cell; keep `data` short
+- capacity: CKB occupies 1 CKB per byte; the 18-byte example costs ~18 CKB of the cell, so `data` can be small
 
 ## 10. Security notes
 
@@ -130,7 +142,7 @@ cell_deps: []
 inputs:    [ wallet cell(s), since = 0 ]
 witnesses: [ secp256k1 over the tx (wallet lock) ]
 outputs:   [ { lock: COMP(channel_hash, max_fee), capacity: 200 CKB } ]
-outputs_data: [ metadata JSON ]
+outputs_data: [ comp-meta v2 bytes (18B for a short name + sponsor) ]
 ```
 
 ### 11.2 Anonymous post
@@ -139,7 +151,7 @@ outputs_data: [ metadata JSON ]
 cell_deps: [ { outPoint: contract cell, depType: code } ]
 inputs:    [ { previous_output: <comp cell>, since: 0x8000000000000001 } ]
 outputs:   [ { lock: COMP(channel_hash, max_fee), capacity: in - fee } ]
-outputs_data: [ <same metadata> ]
+outputs_data: [ <same metadata bytes> ]
 witnesses: [ WitnessArgs{ lock: utf8('{"public_key":null,"signature":null,"extensions":{...}}') } ]
 ```
 
@@ -147,7 +159,7 @@ Expected scripts: COMP lock only. Fee = `estimateFee(3600)` ≤ `max_fee`.
 
 ### 11.3 Negative: mutate data
 
-Same as 11.2 with `outputs_data: [ <metadata with sponsor renamed> ]` → `DataMutated` (17).
+Same as 11.2 with `outputs_data: [ <metadata bytes with a different sponsor> ]` → `DataMutated` (17).
 
 ## 12. Test matrix
 

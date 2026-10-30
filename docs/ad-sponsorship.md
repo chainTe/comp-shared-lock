@@ -19,21 +19,29 @@
 
 不需要数组，也不需要注册表：多一个赞助商，就是多一个 cell。
 
-## 数据格式
+## 数据格式（comp-meta v2，二进制）
 
-cell data（创建时写入，永不变）：
+JSON 太占地方（一个频道快 120 字节 ≈ 120 CKB），改成紧凑二进制：
 
-```json
-{
-  "protocol": "comp",
-  "version": 2,
-  "type": "channel",
-  "name": "小鲸",
-  "slug": "xiaojing",
-  "kind": "chat",
-  "sponsor": { "name": "X" }
-}
 ```
+[0]     版本 0x02
+[1]     flags（bit0 = 带赞助商）
+[2..4]  name_len（u16 LE）
+[4..]   name（UTF-8）
+[..]    kind（u8：0=chat, 1=wall）
+[..]    sponsor_len（u8，0 = 没有）
+[..]    sponsor（UTF-8）
+```
+
+例：`name="小鲸", kind=chat, sponsor="鱼铺"` → 18 字节：
+
+```
+02 01 06 00 e5b08fe9b2b8 00 06 e9b1bce993ba
+```
+
+老频道是 JSON，解析器先认 `0x02`，不认就退回按 JSON 读。
+
+参考实现：`scripts/lib/sponsor.mjs` 的 `encodeMetadata` / `parseMetadata`。
 
 ## 合约（v0.4 草案）
 
